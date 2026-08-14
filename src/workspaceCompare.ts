@@ -46,9 +46,7 @@ export function compareWorkspaceStates(before: WorkspaceState, after: WorkspaceS
   const beforePresentation = getPresentationState(before), afterPresentation = getPresentationState(after)
   add(diffs, after, 'presentation:story', 'order', beforePresentation.order.join(' → '), afterPresentation.order.join(' → '))
   add(diffs, after, 'presentation:story', 'hiddenScenes', beforePresentation.hiddenSceneIds.join(', '), afterPresentation.hiddenSceneIds.join(', '))
-  for (const id of new Set([...beforePresentation.order,...afterPresentation.order])) {
-    add(diffs, after, `scene:${id}`, 'speakerNote', beforePresentation.notes[id] ?? null, afterPresentation.notes[id] ?? null)
-  }
+  for (const id of new Set([...beforePresentation.order,...afterPresentation.order])) add(diffs, after, `scene:${id}`, 'speakerNote', beforePresentation.notes[id] ?? null, afterPresentation.notes[id] ?? null)
   const beforeImportedScenes=beforePresentation.importedScenes??[],afterImportedScenes=afterPresentation.importedScenes??[]
   for(const id of new Set([...beforeImportedScenes.map((scene)=>scene.id),...afterImportedScenes.map((scene)=>scene.id)])){
     const l=beforeImportedScenes.find((scene)=>scene.id===id),r=afterImportedScenes.find((scene)=>scene.id===id)
@@ -60,7 +58,22 @@ export function compareWorkspaceStates(before: WorkspaceState, after: WorkspaceS
   for(const id of new Set([...beforeTables.map((table)=>table.id),...afterTables.map((table)=>table.id)])){
     const l=beforeTables.find((table)=>table.id===id),r=afterTables.find((table)=>table.id===id)
     if(!l||!r){add(diffs,after,`table:${id}`,'importedTable',l?JSON.stringify(l):null,r?JSON.stringify(r):null);continue}
-    add(diffs,after,`table:${id}`,'label',l.label,r.label);add(diffs,after,`table:${id}`,'columns',JSON.stringify(l.columns),JSON.stringify(r.columns));add(diffs,after,`table:${id}`,'rows',JSON.stringify(l.rows),JSON.stringify(r.rows));add(diffs,after,`table:${id}`,'source',l.source,r.source)
+    add(diffs,after,`table:${id}`,'label',l.label,r.label);add(diffs,after,`table:${id}`,'source',l.source,r.source)
+    const beforeColumns=new Map(l.columns.map((column)=>[column.id,column])),afterColumns=new Map(r.columns.map((column)=>[column.id,column]))
+    for(const columnId of new Set([...beforeColumns.keys(),...afterColumns.keys()])){
+      const lc=beforeColumns.get(columnId),rc=afterColumns.get(columnId)
+      if(!lc||!rc){add(diffs,after,`table:${id}:column:${columnId}`,'column',lc?JSON.stringify(lc):null,rc?JSON.stringify(rc):null);continue}
+      add(diffs,after,`table:${id}:column:${columnId}`,'label',lc.label,rc.label);add(diffs,after,`table:${id}:column:${columnId}`,'type',lc.type,rc.type)
+    }
+    const beforeRows=new Map(l.rows.map((row)=>[row.id,row])),afterRows=new Map(r.rows.map((row)=>[row.id,row]))
+    for(const rowId of new Set([...beforeRows.keys(),...afterRows.keys()])){
+      const lr=beforeRows.get(rowId),rr=afterRows.get(rowId)
+      if(!lr||!rr){add(diffs,after,`table:${id}:${rowId}`,'row',lr?JSON.stringify(lr.values):null,rr?JSON.stringify(rr.values):null);continue}
+      for(const columnId of new Set([...Object.keys(lr.values),...Object.keys(rr.values)])){
+        const label=afterColumns.get(columnId)?.label??beforeColumns.get(columnId)?.label??columnId
+        add(diffs,after,`table:${id}:${rowId}`,label,lr.values[columnId]??null,rr.values[columnId]??null)
+      }
+    }
   }
 
   for (const id of new Set([...before.charts.map((x)=>x.id),...after.charts.map((x)=>x.id)])) {
