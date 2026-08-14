@@ -14,8 +14,9 @@ export function buildPresentationScenes(workspace: WorkspaceState): Presentation
   const revenue = workspace.metrics.find((metric) => metric.id === 'revenue')
   const growth = workspace.metrics.find((metric) => metric.id === 'growth')
   const decision = workspace.decisions[0]
+  const planRevenue = workspace.metrics.find((metric) => metric.id === 'planRevenue')
   const claim = deriveGrowthLeaderClaim(workspace)
-  if (!revenue || !growth || !decision) throw new Error('Presentation requires revenue, growth, and decision objects')
+  if (!revenue || !growth || !planRevenue || !decision) throw new Error('Presentation requires revenue, plan, growth, and decision objects')
   const leader = workspace.regions.find((row) => claim.evidenceObjectIds.includes(`region:${row.id}`))!
 
   return [
@@ -30,7 +31,7 @@ export function buildPresentationScenes(workspace: WorkspaceState): Presentation
       id: 'performance',
       eyebrow: '02 · Performance',
       title: `${formatMetric(revenue)} revenue`,
-      note: 'Lead with momentum, then use the next scene to explain which region changes the allocation decision.',
+      note: `Revenue is ${Math.abs(revenue.value - planRevenue.value).toFixed(1)}M ${revenue.value >= planRevenue.value ? 'above' : 'below'} plan. Lead with the variance, then use the next scene to explain which region changes the allocation decision.`,
       source: 'Finance model · Revenue · Q2 FY27 · live',
     },
     {
