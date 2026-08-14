@@ -1,3 +1,5 @@
+import { evaluateSemanticFormula, type TableData, type TableSchema } from './formulas.ts'
+
 export type Surface = 'docs' | 'data' | 'present'
 
 export type ObjectKind = 'document' | 'region' | 'metric' | 'decision' | 'scene'
@@ -202,6 +204,35 @@ export const seedWorkspace: WorkspaceState = {
   history: [],
 }
 
+export const regionsSchema: TableSchema = {
+  id: 'Regions',
+  label: 'Regions',
+  fields: [
+    { id: 'Region', label: 'Region', type: 'text' },
+    { id: 'Revenue', label: 'Revenue', type: 'currency' },
+    { id: 'Growth', label: 'Growth', type: 'percent' },
+    { id: 'Margin', label: 'Margin', type: 'percent' },
+  ],
+}
+
+export const revenueFormula = 'SUM(Regions.Revenue)'
+
+export function regionsTable(workspace: WorkspaceState): TableData {
+  return {
+    schema: regionsSchema,
+    rows: workspace.regions.map((row) => ({
+      Region: row.region,
+      Revenue: row.revenue,
+      Growth: row.growth,
+      Margin: row.margin,
+    })),
+  }
+}
+
+export function evaluateWorkspaceFormula(workspace: WorkspaceState, expression: string) {
+  return evaluateSemanticFormula(expression, [regionsTable(workspace)])
+}
+
 export function formatMetric(metric: Metric) {
   if (metric.format === 'currency') return `$${metric.value.toFixed(1)}M`
   if (metric.format === 'percent') return `${metric.value.toFixed(metric.value % 1 ? 1 : 0)}%`
@@ -306,7 +337,7 @@ export function updateRegionField(
   const changedObjectIds = [`region:${id}`]
 
   if (field === 'revenue') {
-    const totalRevenue = Number(regions.reduce((sum, row) => sum + row.revenue, 0).toFixed(1))
+    const totalRevenue = Number(evaluateWorkspaceFormula({ ...workspace, regions }, revenueFormula).value.toFixed(1))
     metrics = workspace.metrics.map((metric) =>
       metric.id === 'revenue' ? { ...metric, value: totalRevenue, updatedAt: changedAt } : metric,
     )
