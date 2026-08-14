@@ -14,6 +14,13 @@ test('runtime command codec validates nested semantic block and review payloads'
   assert.equal(review.annotation.kind, 'approval')
 })
 
+test('runtime command codec preserves imported document block provenance', () => {
+  const command={type:'document.block.insert',block:{id:'block:imported',type:'paragraph',text:'Imported heading',style:'heading-1',source:'strategy.docx'}}
+  const parsed=parseWorkspaceCommand(command)
+  assert.equal(parsed.block.source,'strategy.docx')
+  assert.deepEqual(deserializeWorkspaceCommand(serializeWorkspaceCommand(command)),{...command,changedAt:undefined})
+})
+
 test('runtime command codec validates presentation state and speaker-note commands', () => {
   const replace = parseWorkspaceCommand({ type:'presentation.replace', value:{ order:['decision','thesis','performance','signal'], hiddenSceneIds:['signal'], notes:{decision:'Close clearly'} } })
   assert.equal(replace.value.order[0], 'decision')
