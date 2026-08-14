@@ -19,7 +19,6 @@ import {
   cloneSeedWorkspace,
   createWorkspaceSession,
   executeWorkspaceCommand,
-  hydrateWorkspace,
   redoWorkspaceSession,
   undoWorkspaceSession,
   type RegionRow,
@@ -29,14 +28,18 @@ import {
   type WorkspaceState,
 } from './model'
 import { previewWorkspaceCommand } from './commandPreview'
+import {
+  hydrateWorkspaceSession,
+  LEGACY_WORKSPACE_STORAGE_KEY,
+  serializeWorkspaceSession,
+  SESSION_STORAGE_KEY,
+} from './sessionStore'
 import { CommandPalette } from './components/CommandPalette'
 import { ContextPanel } from './components/ContextPanel'
 import { DataSurface } from './components/DataSurface'
 import { DocsSurface } from './components/DocsSurface'
 import { PresentSurface } from './components/PresentSurface'
 import './model-view.css'
-
-const STORAGE_KEY = 'frame-workspace-v1'
 
 type NavItem = {
   id: Surface
@@ -51,17 +54,16 @@ const navItems: NavItem[] = [
   { id: 'present', label: 'Board narrative', icon: Presentation, meta: 'Present' },
 ]
 
-function loadWorkspace(): WorkspaceState {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY)
-    return hydrateWorkspace(raw ? JSON.parse(raw) : null)
-  } catch {
-    return cloneSeedWorkspace()
-  }
-}
-
 function loadSession(): WorkspaceSession {
-  return createWorkspaceSession(loadWorkspace())
+  try {
+    const rawSession = localStorage.getItem(SESSION_STORAGE_KEY)
+    if (rawSession) return hydrateWorkspaceSession(JSON.parse(rawSession))
+
+    const legacyWorkspace = localStorage.getItem(LEGACY_WORKSPACE_STORAGE_KEY)
+    return hydrateWorkspaceSession(null, legacyWorkspace ? JSON.parse(legacyWorkspace) : cloneSeedWorkspace())
+  } catch {
+    return createWorkspaceSession(cloneSeedWorkspace())
+  }
 }
 
 function isEditingText(target: EventTarget | null) {
@@ -80,8 +82,9 @@ export default function WorkspaceApp() {
   const commandPreview = pendingCommand ? previewWorkspaceCommand(workspace, pendingCommand) : null
 
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(workspace))
-  }, [workspace])
+    localStorage.setItem(SESSION_STORAGE_KEY, serializeWorkspaceSession(session))
+    localStorage.setItem(LEGACY_WORKSPACE_STORAGE_KEY, JSON.stringify(workspace))
+  }, [session, workspace])
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -259,7 +262,7 @@ export default function WorkspaceApp() {
             {surface === 'data' && <DataSurface workspace={workspace} updateRegion={updateRegion} />}
             {surface === 'present' && <PresentSurface workspace={workspace} />}
           </section>
-          {contextOpen && <ContextPanel workspace={workspace} surface={surface} onClose={() => setContextOpen(false)} />}
+          {contextOpen && <ContextPanel workspace={workspace} surface={surface} transactions={session.past} onClose={() => setContextOpen(false)} />}
         </div>
       </main>
 
