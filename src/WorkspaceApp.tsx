@@ -106,7 +106,7 @@ export default function WorkspaceApp() {
       document.querySelectorAll('.frame-object-focused').forEach((element) => element.classList.remove('frame-object-focused'))
       const candidates = [selectedObjectId, ...getDownstreamObjectIds(workspace.graph, [selectedObjectId])]
       const target = candidates.flatMap((id) => {
-        const escaped = globalThis.CSS?.escape ? CSS.escape(id) : id.replace(/["\\]/g, '\\$&')
+        const escaped = CSS.escape(id)
         const element = document.querySelector(`[data-frame-object="${escaped}"]`)
         return element instanceof HTMLElement ? [element] : []
       })[0]
