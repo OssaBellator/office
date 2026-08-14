@@ -177,7 +177,7 @@ export function resolveSemanticClaim(workspace: WorkspaceState, claimId: string)
   }
 }
 
-export function makeGrowthEvidenceInsertion(workspace: WorkspaceState, idSuffix = globalThis.crypto?.randomUUID?.() ?? `${Date.now()}`) {
+export function makeGrowthEvidenceInsertion(workspace: WorkspaceState, idSuffix: string = globalThis.crypto?.randomUUID?.() ?? `${Date.now()}`) {
   const leader = workspace.regions.reduce((best, row) => row.growth > best.growth ? row : best)
   const claimId = `claim:${idSuffix}`
   const citationId = `citation:${idSuffix}`
