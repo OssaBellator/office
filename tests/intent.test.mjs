@@ -19,12 +19,27 @@ test('palette intent parses navigation and session actions', () => {
   assert.equal(parsePaletteIntent('redo last change', workspace).kind, 'redo')
 })
 
-test('palette intent builds evidence and decision commands', () => {
+test('palette intent builds semantic evidence and decision commands', () => {
   const workspace = cloneSeedWorkspace()
   const evidence = parsePaletteIntent('add evidence to strategy', workspace)
   assert.equal(evidence.kind, 'command')
-  assert.match(evidence.command.text, /APAC is the fastest-growing region/)
+  assert.equal(evidence.command.type, 'document.block.insert')
+  assert.equal(evidence.command.block.type, 'claim')
+  assert.match(evidence.command.claim.statement, /APAC is the fastest-growing region/)
+  assert.equal(evidence.command.citation.evidenceObjectId, 'region:apac')
   assert.equal(parsePaletteIntent('approve decision', workspace).command.status, 'approved')
+})
+
+test('palette intent supports semantic document slash insertion', () => {
+  const workspace = cloneSeedWorkspace()
+  const paragraph = parsePaletteIntent('/paragraph Validate margin before launch.', workspace)
+  assert.equal(paragraph.kind, 'command')
+  assert.equal(paragraph.command.type, 'document.block.insert')
+  assert.equal(paragraph.command.block.type, 'paragraph')
+  assert.equal(paragraph.command.block.text, 'Validate margin before launch.')
+  assert.equal(parsePaletteIntent('/claim', workspace).command.block.type, 'claim')
+  assert.equal(parsePaletteIntent('/metrics', workspace).command.block.type, 'metric-embed')
+  assert.equal(parsePaletteIntent('/decision', workspace).command.block.type, 'decision-embed')
 })
 
 test('palette intent validates semantic formulas and region names', () => {
@@ -36,7 +51,7 @@ test('palette intent validates semantic formulas and region names', () => {
   assert.equal(parsePaletteIntent('set Moon revenue to 1', workspace).kind, 'error')
 })
 
-test('palette intent supports document title and append commands', () => {
+test('palette intent supports document title and legacy append commands', () => {
   const workspace = cloneSeedWorkspace()
   assert.deepEqual(parsePaletteIntent('set strategy title to One connected workspace', workspace), {
     kind: 'command', label: 'Update strategy title', command: { type: 'document.update', field: 'title', value: 'One connected workspace' },
