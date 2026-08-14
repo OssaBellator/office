@@ -1,52 +1,50 @@
+import { useEffect, useState } from 'react'
 import { ArrowUpRight, CheckCircle2, Circle, Link2, Sparkles } from 'lucide-react'
 import { formatMetric, metricDelta, type WorkspaceState } from '../model'
 
 export function DocsSurface({
   workspace,
-  updateDocument,
+  commitDocument,
   onOpenData,
 }: {
   workspace: WorkspaceState
-  updateDocument: (field: keyof WorkspaceState['document'], value: string) => void
+  commitDocument: (field: keyof WorkspaceState['document'], value: string) => void
   onOpenData: () => void
 }) {
+  const [draft, setDraft] = useState(workspace.document)
   const revenue = workspace.metrics.find((metric) => metric.id === 'revenue')!
   const growth = workspace.metrics.find((metric) => metric.id === 'growth')!
   const decision = workspace.decisions[0]
+  const fastest = workspace.regions.reduce((best, row) => row.growth > best.growth ? row : best)
+
+  useEffect(() => {
+    setDraft(workspace.document)
+  }, [workspace.document.eyebrow, workspace.document.title, workspace.document.summary, workspace.document.body])
+
+  const edit = (field: keyof WorkspaceState['document'], value: string) => {
+    setDraft((current) => ({ ...current, [field]: value }))
+  }
+
+  const commit = (field: keyof WorkspaceState['document']) => {
+    if (draft[field] !== workspace.document[field]) commitDocument(field, draft[field])
+  }
 
   return (
     <div className="document-wrap">
       <article className="document-page">
-        <input
-          className="doc-eyebrow"
-          value={workspace.document.eyebrow}
-          onChange={(event) => updateDocument('eyebrow', event.target.value)}
-          aria-label="Document status"
-        />
-        <textarea
-          className="doc-title"
-          value={workspace.document.title}
-          onChange={(event) => updateDocument('title', event.target.value)}
-          aria-label="Document title"
-          rows={2}
-        />
-        <textarea
-          className="doc-summary"
-          value={workspace.document.summary}
-          onChange={(event) => updateDocument('summary', event.target.value)}
-          aria-label="Executive summary"
-          rows={3}
-        />
+        <input className="doc-eyebrow" value={draft.eyebrow} onChange={(event) => edit('eyebrow', event.target.value)} onBlur={() => commit('eyebrow')} aria-label="Document status" />
+        <textarea className="doc-title" value={draft.title} onChange={(event) => edit('title', event.target.value)} onBlur={() => commit('title')} aria-label="Document title" rows={2} />
+        <textarea className="doc-summary" value={draft.summary} onChange={(event) => edit('summary', event.target.value)} onBlur={() => commit('summary')} aria-label="Executive summary" rows={3} />
 
         <div className="doc-divider" />
         <h2>The opportunity</h2>
-        <textarea
-          className="doc-body"
-          value={workspace.document.body}
-          onChange={(event) => updateDocument('body', event.target.value)}
-          aria-label="Document body"
-          rows={7}
-        />
+        <textarea className="doc-body" value={draft.body} onChange={(event) => edit('body', event.target.value)} onBlur={() => commit('body')} aria-label="Document body" rows={7} />
+
+        <div className="claim-card">
+          <div className="claim-header"><span>SUPPORTED CLAIM</span><span><CheckCircle2 size={12} /> Live evidence</span></div>
+          <strong>{fastest.region} is the fastest-growing region at {fastest.growth}%.</strong>
+          <div className="claim-source"><Link2 size={12} /> Finance model · Regions.Growth · {fastest.region}</div>
+        </div>
 
         <div className="live-object-header">
           <div>
@@ -61,9 +59,7 @@ export function DocsSurface({
             <div className="metric-card" key={metric.id}>
               <span>{metric.label}</span>
               <strong>{formatMetric(metric)}</strong>
-              <small className={metricDelta(metric) >= 0 ? 'positive' : 'negative'}>
-                {metricDelta(metric) >= 0 ? '↑' : '↓'} {Math.abs(metricDelta(metric)).toFixed(1)} vs prior
-              </small>
+              <small className={metricDelta(metric) >= 0 ? 'positive' : 'negative'}>{metricDelta(metric) >= 0 ? '↑' : '↓'} {Math.abs(metricDelta(metric)).toFixed(1)} vs prior</small>
             </div>
           ))}
         </div>
@@ -72,10 +68,7 @@ export function DocsSurface({
           <Sparkles size={17} />
           <div>
             <strong>Frame insight</strong>
-            <p>
-              Revenue is now {formatMetric(revenue)} with {formatMetric(growth)} YoY growth. APAC is the fastest-growing
-              region, which supports the expansion recommendation but deserves a margin check before approval.
-            </p>
+            <p>Revenue is now {formatMetric(revenue)} with {formatMetric(growth)} YoY growth. {fastest.region} is the fastest-growing region, which supports the expansion recommendation but deserves a margin check before approval.</p>
           </div>
         </div>
 
