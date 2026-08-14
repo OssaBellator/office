@@ -51,7 +51,7 @@ export function importedTableFromSheet(sheet: ImportedSheet, fileName: string, i
   const data=sheet.rows.slice(headerIndex+1).map((row,offset)=>({row,sourceIndex:headerIndex+1+offset})).filter(({row})=>row.some((cell)=>cell!==null&&String(cell).trim()!==''))
   const columns=baseColumns.map((column,index)=>({...column,type:inferType(data.map(({row})=>row[index]??null))}))
   const rows=data.map(({row},rowIndex)=>({id:`row:${idSuffix}:${rowIndex+1}`,values:Object.fromEntries(columns.map((column,index)=>[column.id,row[index]??null]))}))
-  const formulaEntries:string[][]=[]
+  const formulaEntries:Array<[string,string]>=[]
   data.forEach(({sourceIndex},rowIndex)=>columns.forEach((column,columnIndex)=>{const formula=sheet.formulas?.[sourceIndex]?.[columnIndex]?.trim();if(formula)formulaEntries.push([importedTableCellKey(rows[rowIndex].id,column.id),formula])}))
   const formulaByCell=formulaEntries.length?Object.fromEntries(formulaEntries):undefined
   return {id:`imported:${slug(fileName)}:${slug(sheet.name)}:${idSuffix}`,label:sheet.name,source:fileName,columns,rows,importedAt:'just now',...(formulaByCell?{formulaByCell}:{})}
