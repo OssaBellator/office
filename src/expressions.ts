@@ -4,6 +4,11 @@ export type SemanticDimension = 'number' | 'currency' | 'percent'
 export type SemanticExpressionResult = FormulaResult & {
   terms: ParsedFormula[]
   dimension: SemanticDimension
+  metricDependencies: string[]
+}
+
+export type SemanticExpressionOptions = {
+  resolveMetric?: (metricId: string) => { value: number; dimension: SemanticDimension }
 }
 
 type DimensionedValue = { value: number; dimension: SemanticDimension }
@@ -11,13 +16,16 @@ type DimensionedValue = { value: number; dimension: SemanticDimension }
 class ExpressionParser {
   private index = 0
   private dependencies = new Set<string>()
+  private metricDependencies = new Set<string>()
   private terms: ParsedFormula[] = []
   private expression: string
   private tables: TableData[]
+  private resolveMetric?: SemanticExpressionOptions['resolveMetric']
 
-  constructor(expression: string, tables: TableData[]) {
+  constructor(expression: string, tables: TableData[], options: SemanticExpressionOptions = {}) {
     this.expression = expression
     this.tables = tables
+    this.resolveMetric = options.resolveMetric
   }
 
   parse(): SemanticExpressionResult {
@@ -31,6 +39,7 @@ class ExpressionParser {
       value: Object.is(rounded, -0) ? 0 : rounded,
       dimension: result.dimension,
       dependencies: [...this.dependencies],
+      metricDependencies: [...this.metricDependencies],
       terms: this.terms,
     }
   }
@@ -91,6 +100,7 @@ class ExpressionParser {
       return value
     }
     if (char && /[0-9.]/.test(char)) return { value: this.parseNumber(), dimension: 'number' }
+    if (/^METRIC\s*\(/i.test(this.expression.slice(this.index))) return this.parseMetricReference()
     return this.parseAggregate()
   }
 
@@ -99,6 +109,19 @@ class ExpressionParser {
     if (!match) throw new Error(`Expected number near: ${this.expression.slice(this.index)}`)
     this.index += match[0].length
     return Number(match[0])
+  }
+
+  private parseMetricReference(): DimensionedValue {
+    const match = this.expression.slice(this.index).match(/^METRIC\s*\(\s*([A-Za-z][\w-]*)\s*\)/i)
+    if (!match) throw new Error(`Invalid metric reference near: ${this.expression.slice(this.index)}`)
+    const metricId = match[1]
+    if (!this.resolveMetric) throw new Error(`Metric references require a workspace metric resolver: ${metricId}`)
+    this.index += match[0].length
+    const resolved = this.resolveMetric(metricId)
+    if (!Number.isFinite(resolved.value)) throw new Error(`Metric ${metricId} did not resolve to a finite value`)
+    this.metricDependencies.add(metricId)
+    this.dependencies.add(`metric:${metricId}`)
+    return resolved
   }
 
   private parseAggregate(): DimensionedValue {
@@ -147,6 +170,6 @@ class ExpressionParser {
   }
 }
 
-export function evaluateSemanticExpression(expression: string, tables: TableData[]): SemanticExpressionResult {
-  return new ExpressionParser(expression, tables).parse()
+export function evaluateSemanticExpression(expression: string, tables: TableData[], options: SemanticExpressionOptions = {}): SemanticExpressionResult {
+  return new ExpressionParser(expression, tables, options).parse()
 }
