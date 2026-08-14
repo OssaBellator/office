@@ -5,10 +5,19 @@ export type SemanticExpressionResult = FormulaResult & {
   terms: ParsedFormula[]
   dimension: SemanticDimension
   metricDependencies: string[]
+  objectDependencies: string[]
+}
+
+export type SemanticLookupResolution = {
+  value: number
+  dimension: SemanticDimension
+  dependencies?: string[]
+  objectDependencies?: string[]
 }
 
 export type SemanticExpressionOptions = {
   resolveMetric?: (metricId: string) => { value: number; dimension: SemanticDimension }
+  resolveLookup?: (relationshipId: string, key: string | number, tableId: string, fieldId: string) => SemanticLookupResolution
 }
 
 type DimensionedValue = { value: number; dimension: SemanticDimension }
@@ -17,15 +26,18 @@ class ExpressionParser {
   private index = 0
   private dependencies = new Set<string>()
   private metricDependencies = new Set<string>()
+  private objectDependencies = new Set<string>()
   private terms: ParsedFormula[] = []
   private expression: string
   private tables: TableData[]
   private resolveMetric?: SemanticExpressionOptions['resolveMetric']
+  private resolveLookup?: SemanticExpressionOptions['resolveLookup']
 
   constructor(expression: string, tables: TableData[], options: SemanticExpressionOptions = {}) {
     this.expression = expression
     this.tables = tables
     this.resolveMetric = options.resolveMetric
+    this.resolveLookup = options.resolveLookup
   }
 
   parse(): SemanticExpressionResult {
@@ -40,6 +52,7 @@ class ExpressionParser {
       dimension: result.dimension,
       dependencies: [...this.dependencies],
       metricDependencies: [...this.metricDependencies],
+      objectDependencies: [...this.objectDependencies],
       terms: this.terms,
     }
   }
@@ -101,6 +114,7 @@ class ExpressionParser {
     }
     if (char && /[0-9.]/.test(char)) return { value: this.parseNumber(), dimension: 'number' }
     if (/^METRIC\s*\(/i.test(this.expression.slice(this.index))) return this.parseMetricReference()
+    if (/^LOOKUP\s*\(/i.test(this.expression.slice(this.index))) return this.parseLookupReference()
     return this.parseAggregate()
   }
 
@@ -122,6 +136,22 @@ class ExpressionParser {
     this.metricDependencies.add(metricId)
     this.dependencies.add(`metric:${metricId}`)
     return resolved
+  }
+
+  private parseLookupReference(): DimensionedValue {
+    const match = this.expression.slice(this.index).match(/^LOOKUP\s*\(\s*([A-Za-z][\w:-]*)\s*,\s*(?:"([^"]*)"|'([^']*)'|(-?(?:\d+(?:\.\d+)?|\.\d+)))\s*,\s*([A-Za-z][\w-]*)\.([A-Za-z][\w-]*)\s*\)/i)
+    if (!match) throw new Error(`Invalid LOOKUP expression near: ${this.expression.slice(this.index)}`)
+    const relationshipId = match[1]
+    const key: string | number = match[2] !== undefined ? match[2] : match[3] !== undefined ? match[3] : Number(match[4])
+    const tableId = match[5]
+    const fieldId = match[6]
+    if (!this.resolveLookup) throw new Error(`LOOKUP expressions require a workspace relationship resolver: ${relationshipId}`)
+    this.index += match[0].length
+    const resolved = this.resolveLookup(relationshipId, key, tableId, fieldId)
+    if (!Number.isFinite(resolved.value)) throw new Error(`LOOKUP ${relationshipId} did not resolve to a finite value`)
+    resolved.dependencies?.forEach((dependency) => this.dependencies.add(dependency))
+    resolved.objectDependencies?.forEach((dependency) => this.objectDependencies.add(dependency))
+    return { value: resolved.value, dimension: resolved.dimension }
   }
 
   private parseAggregate(): DimensionedValue {
