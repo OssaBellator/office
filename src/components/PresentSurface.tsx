@@ -6,7 +6,7 @@ import { getPresentationState } from '../presentationState'
 import type { VersionedWorkspaceCommand } from '../semanticCommands'
 import { SemanticScene } from './SemanticScene'
 
-export function PresentSurface({ workspace, onPresentationCommand }: { workspace: WorkspaceState; onPresentationCommand: (command: VersionedWorkspaceCommand) => void }) {
+export function PresentSurface({ workspace, focusedObjectId, onPresentationCommand }: { workspace: WorkspaceState; focusedObjectId?: string | null; onPresentationCommand: (command: VersionedWorkspaceCommand) => void }) {
   const visibleScenes = useMemo(() => buildPresentationScenes(workspace), [workspace])
   const allScenes = useMemo(() => buildAllPresentationScenes(workspace), [workspace])
   const presentation = getPresentationState(workspace)
@@ -18,6 +18,11 @@ export function PresentSurface({ workspace, onPresentationCommand }: { workspace
   useEffect(() => {
     if (!visibleScenes.some((item) => item.id === selectedId) && visibleScenes[0]) setSelectedId(visibleScenes[0].id)
   }, [selectedId, visibleScenes])
+  useEffect(() => {
+    if (!focusedObjectId?.startsWith('scene:')) return
+    const id = focusedObjectId.replace(/^scene:/, '') as PresentationSceneId
+    if (visibleScenes.some((item) => item.id === id)) setSelectedId(id)
+  }, [focusedObjectId, visibleScenes])
   useEffect(() => setNoteDraft(scene?.note ?? ''), [scene?.id, scene?.note])
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -50,14 +55,14 @@ export function PresentSurface({ workspace, onPresentationCommand }: { workspace
           const hidden = presentation.hiddenSceneIds.includes(item.id)
           const active = !hidden && item.id === scene.id
           const visibleCount = presentation.order.length - presentation.hiddenSceneIds.length
-          return <div className={`authored-story-item ${active ? 'active' : ''} ${hidden ? 'hidden' : ''}`} key={item.id}>
+          return <div className={`authored-story-item ${active ? 'active' : ''} ${hidden ? 'hidden' : ''}`} data-frame-object={`scene:${item.id}`} key={item.id}>
             <button className="story-thumb" disabled={hidden} onClick={() => setSelectedId(item.id)}><small>{String(index + 1).padStart(2, '0')}</small><strong>{item.title}</strong></button>
             <div className="story-item-actions"><button disabled={index === 0} onClick={() => move(item.id, -1)} title="Move scene up"><ChevronUp size={12} /></button><button disabled={index === allScenes.length - 1} onClick={() => move(item.id, 1)} title="Move scene down"><ChevronDown size={12} /></button><button disabled={!hidden && visibleCount <= 1} onClick={() => toggleVisibility(item.id)} title={hidden ? 'Show scene' : 'Hide scene'}>{hidden ? <Eye size={12} /> : <EyeOff size={12} />}</button></div>
           </div>
         })}
         <div className="story-authoring-summary"><strong>{presentation.order.length} semantic scenes</strong><span>Reorder and visibility are versioned; scene content stays live.</span></div>
       </div>
-      <div className="slide-stage">
+      <div className="slide-stage" data-frame-object={`scene:${scene.id}:stage`}>
         <SemanticScene workspace={workspace} scene={scene} />
         <div className="slide-nav-row"><button disabled={selectedIndex === 0} onClick={() => go(-1)}><ChevronLeft size={14} /> Previous</button><span>{scene.eyebrow}</span><button disabled={selectedIndex === visibleScenes.length - 1} onClick={() => go(1)}>Next <ChevronRight size={14} /></button></div>
         <div className="slide-note editable-slide-note"><Sparkles size={15} /><div><strong>Speaker cue</strong><textarea value={noteDraft} onChange={(event) => setNoteDraft(event.target.value)} onBlur={commitNote} rows={3} aria-label={`${scene.id} speaker note`} /><small>Clear the note to return to the live generated cue.</small></div></div>
