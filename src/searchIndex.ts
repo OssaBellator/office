@@ -18,7 +18,7 @@ function record(id:string,kind:SearchObjectKind,title:string,text:string,surface
 export function buildWorkspaceSearchIndex(workspace: WorkspaceState): WorkspaceSearchRecord[] {
   const semantic = getSemanticDocument(workspace)
   const records: WorkspaceSearchRecord[] = [
-    record('document:strategy','document',workspace.document.title,`${workspace.document.eyebrow} ${workspace.document.summary}`,'docs' ? ['docs'] : []),
+    record('document:strategy','document',workspace.document.title,`${workspace.document.eyebrow} ${workspace.document.summary}`,['docs']),
   ]
   for (const block of semantic.blocks) {
     if (block.type === 'paragraph') records.push(record(block.id,'block','Strategy paragraph',block.text,['docs']))
