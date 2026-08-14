@@ -71,6 +71,15 @@ export function parsePaletteIntent(input: string, workspace: WorkspaceState): Pa
   const sourceMatch = query.match(/^(?:mark|set)\s+(?:the\s+)?(?:finance(?: model)?|finance source)\s+(?:source\s+)?(?:as\s+)?(live|stale)$/i)
   if (sourceMatch) return { kind: 'command', label: `Mark Finance model ${sourceMatch[1].toLowerCase()}`, command: { type: 'source.status', sourceId: 'source:finance', status: sourceMatch[1].toLowerCase() as 'live' | 'stale' } }
 
+  const chartMatch = query.match(/^(?:\/chart\s+|(?:set|change|update)\s+(?:the\s+)?(?:actual\s*(?:vs|versus)\s*plan|revenue(?:\s+comparison)?)\s+chart\s+(?:to\s+)?)(line|bars?|grouped bars?)$/i)
+  if (chartMatch) {
+    const chart = workspace.charts.find((candidate) => candidate.id === 'revenue-vs-plan')
+    if (!chart) return { kind: 'error', message: 'The shared Actual vs plan chart is missing.' }
+    const raw = chartMatch[1].toLowerCase()
+    const kind = raw === 'line' ? 'line' as const : 'grouped-bar' as const
+    return { kind: 'command', label: `Change ${chart.label} to ${kind === 'line' ? 'line' : 'grouped bars'}`, command: { type: 'chart.kind', chartId: chart.id, kind } }
+  }
+
   const formulaMatch = query.match(/^(?:set|change|update)\s+(?:the\s+)?revenue\s+formula\s+(?:to\s+)?(.+)$/i)
   if (formulaMatch) {
     const formula = formulaMatch[1].trim()
@@ -99,5 +108,5 @@ export function parsePaletteIntent(input: string, workspace: WorkspaceState): Pa
   }
 
   const leader = deriveGrowthLeaderClaim(workspace)
-  return { kind: 'unknown', message: `I can insert /paragraph, /claim, /metrics and /decision blocks; edit actuals, plan values and formulas; manage source freshness and decisions; or navigate views. Current evidence leader: ${leader.statement}` }
+  return { kind: 'unknown', message: `I can insert /paragraph, /claim, /metrics and /decision blocks; edit actuals, plan values, formulas and the shared chart; manage source freshness and decisions; or navigate views. Current evidence leader: ${leader.statement}` }
 }
