@@ -4,7 +4,7 @@ export type WorkspaceTransferMode = 'export' | 'import'
 
 export function WorkspaceTransferDialog({
   mode, onClose, onExportBackup, onExportStrategy, onExportBoard, onExportRegions, onExportPlan, onExportAll,
-  onImportBackup, onImportRegions, onImportPlan,
+  onImportBackup, onImportRegions, onImportPlan, onImportOffice,
 }: {
   mode: WorkspaceTransferMode
   onClose: () => void
@@ -17,12 +17,13 @@ export function WorkspaceTransferDialog({
   onImportBackup: () => void
   onImportRegions: () => void
   onImportPlan: () => void
+  onImportOffice: () => void
 }) {
   const exportMode = mode === 'export'
   return <div className="transfer-backdrop" onMouseDown={onClose}>
     <section className="transfer-dialog" onMouseDown={(event) => event.stopPropagation()} aria-label={`${exportMode ? 'Export' : 'Import'} workspace`}>
       <header className="transfer-heading">
-        <div><span>{exportMode ? 'EXPORT' : 'IMPORT'}</span><h2>{exportMode ? 'Take Frame work anywhere' : 'Bring structured work into Frame'}</h2><p>{exportMode ? 'Export semantic content without flattening the workspace backup.' : 'Imports validate structure first. CSV changes are previewed as normal semantic transactions.'}</p></div>
+        <div><span>{exportMode ? 'EXPORT' : 'IMPORT'}</span><h2>{exportMode ? 'Take Frame work anywhere' : 'Bring structured work into Frame'}</h2><p>{exportMode ? 'Export semantic content without flattening the workspace backup.' : 'Imports validate structure first. Office, Google-export and CSV changes are previewed as semantic transactions before Apply.'}</p></div>
         <button className="icon-button" onClick={onClose} aria-label="Close transfer dialog"><X size={16} /></button>
       </header>
       {exportMode ? <>
@@ -36,11 +37,12 @@ export function WorkspaceTransferDialog({
         <footer className="transfer-footer"><span>Native model stays intact; these are compatibility projections.</span><button className="primary-button" onClick={onExportAll}><Download size={14} /> Export portable set</button></footer>
       </> : <>
         <div className="transfer-grid import-grid">
+          <TransferAction icon={FileText} title="Word / PowerPoint / Excel" detail="Import DOCX, PPTX or XLSX. Google Docs, Slides and Sheets work through their DOCX, PPTX and XLSX downloads." onClick={onImportOffice} action="Choose Office file" />
           <TransferAction icon={Database} title="Workspace backup" detail="Restore a full Frame JSON backup including semantic history." onClick={onImportBackup} action="Choose JSON" />
           <TransferAction icon={Table2} title="Actuals CSV" detail="Validate Region, Revenue, Growth and Margin; preview changed cells before Apply." onClick={onImportRegions} action="Choose CSV" />
           <TransferAction icon={Table2} title="Plan CSV" detail="Validate Region and Revenue; preview changed plan values before Apply." onClick={onImportPlan} action="Choose CSV" />
         </div>
-        <footer className="transfer-footer"><span><Upload size={13} /> CSV imports never replace a table wholesale; they emit semantic row updates.</span></footer>
+        <footer className="transfer-footer"><span><Upload size={13} /> Imports become Frame objects and versioned changes; source files are never silently overwritten.</span></footer>
       </>}
     </section>
   </div>
