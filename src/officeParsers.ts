@@ -17,6 +17,10 @@ function attribute(fragment: string, name: string) {
   return fragment.match(new RegExp(`(?:^|\\s)(?:[\\w.-]+:)?${name}="([^"]*)"`, 'i'))?.[1]
 }
 
+function relationshipId(fragment: string) {
+  return fragment.match(/(?:^|\s)r:id="([^"]*)"/i)?.[1] ?? attribute(fragment, 'id')
+}
+
 function tagTexts(fragment: string, localName: string) {
   const result: string[] = []
   const regex = new RegExp(`<(?:\\w+:)?${localName}\\b[^>]*>([\\s\\S]*?)<\\/(?:\\w+:)?${localName}>`, 'gi')
@@ -50,7 +54,7 @@ export function parsePptxSlideOrder(presentationXml: string | null, relationship
   const relationships = parsePackageRelationships(relationshipsXml)
   const paths: string[] = []
   for (const match of presentationXml.matchAll(/<p:sldId\b([^>]*)\/?\s*>/gi)) {
-    const relId = attribute(match[1], 'id')
+    const relId = relationshipId(match[1])
     const relationship = relId ? relationships.get(relId) : undefined
     if (!relationship) continue
     paths.push(resolvePackagePath('ppt/presentation.xml', relationship.target))
@@ -207,7 +211,7 @@ export function parseXlsxWorkbook(workbookXml: string, relationshipsXml: string,
   const sheets: ImportedSheet[] = []
   for (const match of workbookXml.matchAll(/<sheet\b([^>]*)\/?\s*>/gi)) {
     const name = decodeXml(attribute(match[1], 'name') ?? 'Sheet')
-    const relId = attribute(match[1], 'id')
+    const relId = relationshipId(match[1])
     if (!relId) continue
     const target = relTargets.get(relId)?.target
     if (!target) continue
