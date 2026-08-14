@@ -2,7 +2,7 @@ import { formatMetric, type Surface, type WorkspaceState } from './model.ts'
 import { buildAllPresentationScenes } from './presentationModel.ts'
 import { getSemanticDocument, resolveSemanticClaim } from './semanticDocument.ts'
 
-export type SearchObjectKind = 'document'|'block'|'claim'|'citation'|'metric'|'region'|'plan'|'decision'|'chart'|'source'|'scene'|'review'
+export type SearchObjectKind = 'document'|'block'|'claim'|'citation'|'metric'|'region'|'plan'|'decision'|'chart'|'relationship'|'source'|'scene'|'review'
 export type WorkspaceSearchRecord = {
   id: string
   kind: SearchObjectKind
@@ -36,6 +36,7 @@ export function buildWorkspaceSearchIndex(workspace: WorkspaceState): WorkspaceS
   for (const row of workspace.plans) records.push(record(`plan:${row.id}`,'plan',`${row.region} plan`,`revenue ${row.revenue}`,['data']))
   for (const decision of workspace.decisions) records.push(record(`decision:${decision.id}`,'decision',decision.title,`${decision.status} ${decision.owner} ${decision.rationale}`,['docs','present']))
   for (const chart of workspace.charts) records.push(record(`chart:${chart.id}`,'chart',chart.label,`${chart.kind} ${chart.relationshipId} ${chart.series.map((series)=>`${series.tableId}.${series.fieldId}`).join(' ')}`,['data','present']))
+  for (const relationship of workspace.relationships) records.push(record(relationship.id,'relationship',relationship.label,`${relationship.fromTable}.${relationship.fromField} ${relationship.toTable}.${relationship.toField} ${relationship.cardinality}`,['data']))
   for (const source of workspace.sources) records.push(record(source.id,'source',source.label,`${source.type} ${source.locator} ${source.status}`,['docs','data']))
   for (const scene of buildAllPresentationScenes(workspace)) records.push(record(`scene:${scene.id}`,'scene',scene.title,`${scene.eyebrow} ${scene.note} ${scene.source}`,['present']))
   return records
