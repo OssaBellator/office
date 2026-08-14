@@ -216,7 +216,7 @@ export default function WorkspaceApp() {
       try {
         const plan = await planOfficeImport(workspace, await file.arrayBuffer(), file.name)
         if (plan.commands.length === 0) { setTransferMode(null); setWorkspaceNotice(`${file.name} already matches the workspace`); return }
-        setPendingAutomation(planGovernedAutomation(session, 'owner', plan.commands))
+        setPendingAutomation(planGovernedAutomation(session, 'owner', plan.commands, plan.warnings))
         setTransferMode(null)
         const warning = plan.warnings.length ? ` · ${plan.warnings.length} warning${plan.warnings.length === 1 ? '' : 's'}` : ''
         setWorkspaceNotice(`Previewing ${plan.importedItems} imported item${plan.importedItems === 1 ? '' : 's'} from ${file.name}${warning}`)
@@ -317,7 +317,7 @@ export default function WorkspaceApp() {
       {presentationOpen && <PresentationPlayer workspace={workspace} onClose={() => setPresentationOpen(false)} />}
       {presentationGateOpen && <PresentationReadinessDialog readiness={readiness} reviewGate={reviewGate} onClose={() => setPresentationGateOpen(false)} onOpenContext={() => { setPresentationGateOpen(false); setContextOpen(true) }} onPresentAnyway={() => { setPresentationGateOpen(false); setPresentationOpen(true) }} />}
       {transferMode && <WorkspaceTransferDialog mode={transferMode} onClose={() => setTransferMode(null)} onExportBackup={exportBackup} onExportStrategy={exportStrategy} onExportBoard={exportBoard} onExportRegions={exportRegions} onExportPlan={exportPlan} onExportAll={exportPortableSet} onImportBackup={importBackup} onImportRegions={() => stageCsvImport('regions')} onImportPlan={() => stageCsvImport('plan')} onImportOffice={stageOfficeImport} />}
-      {pendingAutomation && <BatchPreviewModal plan={pendingAutomation.plan} governance={pendingAutomation.governance} title="Import semantic changes" onApply={applyPendingAutomation} onClose={() => setPendingAutomation(null)} />}
+      {pendingAutomation && <BatchPreviewModal plan={pendingAutomation.plan} governance={pendingAutomation.governance} warnings={pendingAutomation.warnings} title="Import semantic changes" onApply={applyPendingAutomation} onClose={() => setPendingAutomation(null)} />}
     </div>
   )
 }
