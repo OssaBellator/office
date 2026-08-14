@@ -25,6 +25,7 @@ import { DataSurface } from './components/DataSurface'
 import { DocsSurface } from './components/DocsSurface'
 import { HistoryBrowser } from './components/HistoryBrowser'
 import { PresentSurface } from './components/PresentSurface'
+import { PresentationPlayer } from './components/PresentationPlayer'
 import './model-view.css'
 import './history-browser.css'
 
@@ -60,6 +61,7 @@ export default function WorkspaceApp() {
   const [contextOpen, setContextOpen] = useState(true)
   const [historyOpen, setHistoryOpen] = useState(false)
   const [workspaceNotice, setWorkspaceNotice] = useState<string | null>(null)
+  const [presentationOpen, setPresentationOpen] = useState(false)
   const workspace = session.present
   const commandPreview = pendingCommand ? previewVersionedCommand(workspace, pendingCommand) : null
 
@@ -79,7 +81,7 @@ export default function WorkspaceApp() {
         setSession((current) => event.shiftKey ? redoVersionedWorkspaceSession(current) : undoVersionedWorkspaceSession(current))
         return
       }
-      if (event.key === 'Escape') { setPendingCommand(null); setCommandOpen(false); setHistoryOpen(false) }
+      if (event.key === 'Escape') { setPendingCommand(null); setCommandOpen(false); setHistoryOpen(false); setPresentationOpen(false) }
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
@@ -96,7 +98,7 @@ export default function WorkspaceApp() {
   const applyPendingCommand = () => { if (!pendingCommand) return; execute(pendingCommand); setPendingCommand(null); setCommandOpen(false) }
   const closeCommandPalette = () => { setPendingCommand(null); setCommandOpen(false) }
   const openCommandPalette = () => { setPendingCommand(null); setCommandOpen(true) }
-  const restoreDemo = () => { setSession(createVersionedWorkspaceSession(cloneSeedWorkspace())); setPendingCommand(null); setCommandOpen(false); setHistoryOpen(false) }
+  const restoreDemo = () => { setSession(createVersionedWorkspaceSession(cloneSeedWorkspace())); setPendingCommand(null); setCommandOpen(false); setHistoryOpen(false); setPresentationOpen(false) }
   const revertTransaction = (transactionId: string) => setSession((current) => revertVersionedTransaction(current, transactionId).session)
   const exportBackup = () => {
     const blob = new Blob([exportWorkspaceSession(session)], { type: 'application/json' })
@@ -121,6 +123,7 @@ export default function WorkspaceApp() {
         setPendingCommand(null)
         setCommandOpen(false)
         setHistoryOpen(false)
+        setPresentationOpen(false)
         setWorkspaceNotice(`Imported ${file.name}`)
       } catch (error) {
         setWorkspaceNotice(error instanceof Error ? error.message : 'Could not import workspace')
@@ -166,7 +169,7 @@ export default function WorkspaceApp() {
             <button className="icon-button" aria-label="Toggle context" onClick={() => setContextOpen((value) => !value)}><Grid3X3 size={16} /></button>
             <button className="secondary-button" onClick={exportBackup}>Export</button>
             <button className="secondary-button" onClick={importBackup}>Import</button>
-            {surface === 'present' && <button className="primary-button"><Play size={14} /> Present</button>}
+            {surface === 'present' && <button className="primary-button" onClick={() => setPresentationOpen(true)}><Play size={14} /> Present</button>}
           </div>
         </header>
 
@@ -183,6 +186,7 @@ export default function WorkspaceApp() {
       <button className="ai-fab" onClick={openCommandPalette} aria-label="Open Frame command palette"><Sparkles size={18} /></button>
       {commandOpen && <CommandPalette surface={surface} preview={commandPreview} onClose={closeCommandPalette} onStageEvidence={stageEvidence} onStageApproval={stageApproval} onApplyPreview={applyPendingCommand} onCancelPreview={() => setPendingCommand(null)} onSubmitQuery={runPaletteQuery} onRestore={restoreDemo} onSwitch={setSurface} />}
       {historyOpen && <HistoryBrowser session={session} onClose={() => setHistoryOpen(false)} onRevert={revertTransaction} />}
+      {presentationOpen && <PresentationPlayer workspace={workspace} onClose={() => setPresentationOpen(false)} />}
     </div>
   )
 }
