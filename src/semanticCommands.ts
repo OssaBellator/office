@@ -19,6 +19,8 @@ import {
   getSemanticDocument,
   updateSemanticLegacyBody,
   withSemanticDocument,
+  type BlockAnnotation,
+  type BlockAnnotationStatus,
   type ClaimConfidence,
   type SemanticCitation,
   type SemanticClaim,
@@ -36,6 +38,9 @@ export type VersionedWorkspaceCommand =
   | { type: 'document.block.move'; blockId: string; toIndex: number; changedAt?: string }
   | { type: 'claim.update'; claimId: string; field: 'statement' | 'rationale' | 'confidence'; value: string | ClaimConfidence; changedAt?: string }
   | { type: 'citation.update'; citationId: string; field: 'label' | 'locator'; value: string; changedAt?: string }
+  | { type: 'annotation.insert'; annotation: BlockAnnotation; changedAt?: string }
+  | { type: 'annotation.update'; annotationId: string; field: 'body' | 'owner' | 'status'; value: string | BlockAnnotationStatus; changedAt?: string }
+  | { type: 'annotation.remove'; annotationId: string; changedAt?: string }
   | { type: 'metric.formula'; metricId: string; formula: string | null; fallbackValue?: number; changedAt?: string }
   | { type: 'source.status'; sourceId: string; status: 'live' | 'stale'; changedAt?: string }
 
@@ -114,7 +119,7 @@ export function runVersionedCommand(workspace: WorkspaceState, command: Versione
       return directMutation(workspace, `Strategy ${String(command.field)} updated`, changedAt, ['document:strategy'], next)
     }
     case 'document.semantic.replace': {
-      const changedIds = [...command.value.blocks.map((block) => block.id), ...command.value.claims.map((claim) => claim.id), ...command.value.citations.map((citation) => citation.id)]
+      const changedIds = [...command.value.blocks.map((block) => block.id), ...command.value.claims.map((claim) => claim.id), ...command.value.citations.map((citation) => citation.id), ...command.value.annotations.map((annotation) => annotation.id)]
       return semanticMutation(workspace, command.value, 'Strategy semantic blocks restored', command.changedAt ?? 'just now', changedIds)
     }
     case 'document.block.update': {
@@ -141,6 +146,9 @@ export function runVersionedCommand(workspace: WorkspaceState, command: Versione
       if (!block) throw new Error(`Unknown document block: ${command.blockId}`)
       semantic.blocks = semantic.blocks.filter((item) => item.id !== command.blockId)
       const removedIds = [command.blockId]
+      const attachedAnnotations = semantic.annotations.filter((annotation) => annotation.blockId === command.blockId)
+      removedIds.push(...attachedAnnotations.map((annotation) => annotation.id))
+      semantic.annotations = semantic.annotations.filter((annotation) => annotation.blockId !== command.blockId)
       if (block.type === 'claim') {
         const claim = semantic.claims.find((item) => item.id === block.claimId)
         if (claim) {
@@ -175,6 +183,28 @@ export function runVersionedCommand(workspace: WorkspaceState, command: Versione
       semantic.citations = semantic.citations.map((item) => item.id === command.citationId ? { ...item, [command.field]: command.value } : item)
       return semanticMutation(workspace, semantic, `Citation ${command.field} updated`, command.changedAt ?? 'just now', [command.citationId])
     }
+    case 'annotation.insert': {
+      const semantic = getSemanticDocument(workspace)
+      if (!semantic.blocks.some((block) => block.id === command.annotation.blockId)) throw new Error(`Unknown annotation block: ${command.annotation.blockId}`)
+      if (semantic.annotations.some((annotation) => annotation.id === command.annotation.id)) throw new Error(`Annotation already exists: ${command.annotation.id}`)
+      semantic.annotations.push(structuredClone(command.annotation))
+      return semanticMutation(workspace, semantic, `Added ${command.annotation.kind}`, command.changedAt ?? 'just now', [command.annotation.id])
+    }
+    case 'annotation.update': {
+      const semantic = getSemanticDocument(workspace)
+      const annotation = semantic.annotations.find((item) => item.id === command.annotationId)
+      if (!annotation) throw new Error(`Unknown annotation: ${command.annotationId}`)
+      if (command.field === 'status' && !['open','resolved','pending','approved'].includes(String(command.value))) throw new Error(`Unknown annotation status: ${command.value}`)
+      semantic.annotations = semantic.annotations.map((item) => item.id === command.annotationId ? { ...item, [command.field]: command.value } as BlockAnnotation : item)
+      return semanticMutation(workspace, semantic, `${annotation.kind} ${command.field} updated`, command.changedAt ?? 'just now', [command.annotationId])
+    }
+    case 'annotation.remove': {
+      const semantic = getSemanticDocument(workspace)
+      const annotation = semantic.annotations.find((item) => item.id === command.annotationId)
+      if (!annotation) throw new Error(`Unknown annotation: ${command.annotationId}`)
+      semantic.annotations = semantic.annotations.filter((item) => item.id !== command.annotationId)
+      return semanticMutation(workspace, semantic, `Removed ${annotation.kind}`, command.changedAt ?? 'just now', [command.annotationId])
+    }
     case 'metric.formula': return updateMetricFormula(workspace, command.metricId, command.formula, command.fallbackValue, command.changedAt)
     case 'source.status': {
       const existing = workspace.sources.find((source) => source.id === command.sourceId)
@@ -202,6 +232,9 @@ export function versionedCommandIsNoop(workspace: WorkspaceState, command: Versi
     case 'document.block.move': return getSemanticDocument(workspace).blocks.findIndex((block) => block.id === command.blockId) === command.toIndex
     case 'claim.update': return getSemanticDocument(workspace).claims.find((claim) => claim.id === command.claimId)?.[command.field] === command.value
     case 'citation.update': return getSemanticDocument(workspace).citations.find((citation) => citation.id === command.citationId)?.[command.field] === command.value
+    case 'annotation.insert': return getSemanticDocument(workspace).annotations.some((annotation) => annotation.id === command.annotation.id)
+    case 'annotation.update': return getSemanticDocument(workspace).annotations.find((annotation) => annotation.id === command.annotationId)?.[command.field] === command.value
+    case 'annotation.remove': return !getSemanticDocument(workspace).annotations.some((annotation) => annotation.id === command.annotationId)
     case 'metric.formula': return (workspace.metrics.find((candidate) => candidate.id === command.metricId)?.formula ?? null) === command.formula
     case 'source.status': return workspace.sources.find((source) => source.id === command.sourceId)?.status === command.status
   }
