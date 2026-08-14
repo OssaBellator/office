@@ -22,8 +22,9 @@ export type SemanticCitation = {
   locator: string
 }
 
+export type SemanticParagraphStyle = 'body' | 'heading-1' | 'heading-2' | 'heading-3' | 'bullet' | 'numbered'
 export type SemanticDocumentBlock =
-  | { id: string; type: 'paragraph'; text: string }
+  | { id: string; type: 'paragraph'; text: string; style?: SemanticParagraphStyle }
   | { id: string; type: 'claim'; claimId: string }
   | { id: string; type: 'metric-embed'; metricIds: string[]; label: string }
   | { id: string; type: 'decision-embed'; decisionId: string }
@@ -117,7 +118,7 @@ function ensureSemanticGraph(workspace: WorkspaceState, semantic: SemanticDocume
   for (const citation of semantic.citations) addObject(objectFor(citation.id, citation.label))
   for (const annotation of semantic.annotations) addObject(objectFor(annotation.id, `${annotation.kind}: ${annotation.body}`))
   for (const block of semantic.blocks) {
-    const label = block.type === 'paragraph' ? 'Document paragraph' : block.type === 'claim' ? 'Claim block' : block.type === 'metric-embed' ? block.label : 'Decision block'
+    const label = block.type === 'paragraph' ? (block.style?.startsWith('heading-') ? 'Document heading' : block.style === 'bullet' || block.style === 'numbered' ? 'Document list item' : 'Document paragraph') : block.type === 'claim' ? 'Claim block' : block.type === 'metric-embed' ? block.label : 'Decision block'
     addObject(objectFor(block.id, label))
     addEdge(edge(block.id, 'document:strategy', `${label} renders in the strategy document`))
     if (block.type === 'claim') addEdge(edge(block.claimId, block.id, 'Claim renders through this document block'))
@@ -138,7 +139,8 @@ function ensureSemanticGraph(workspace: WorkspaceState, semantic: SemanticDocume
 }
 
 export function withSemanticDocument(workspace: WorkspaceState, semanticDocument: SemanticDocumentState): WorkspaceState {
-  const firstParagraph = semanticDocument.blocks.find((block): block is Extract<SemanticDocumentBlock, { type: 'paragraph' }> => block.type === 'paragraph')
+  const firstParagraph = semanticDocument.blocks.find((block): block is Extract<SemanticDocumentBlock, { type: 'paragraph' }> => block.type === 'paragraph' && (!block.style || block.style === 'body'))
+    ?? semanticDocument.blocks.find((block): block is Extract<SemanticDocumentBlock, { type: 'paragraph' }> => block.type === 'paragraph')
   return {
     ...workspace,
     document: firstParagraph ? { ...workspace.document, body: firstParagraph.text } : workspace.document,
@@ -149,7 +151,7 @@ export function withSemanticDocument(workspace: WorkspaceState, semanticDocument
 
 export function updateSemanticLegacyBody(workspace: WorkspaceState, body: string): WorkspaceState {
   const semantic = getSemanticDocument(workspace)
-  const index = semantic.blocks.findIndex((block) => block.type === 'paragraph')
+  const index = semantic.blocks.findIndex((block) => block.type === 'paragraph' && (!block.style || block.style === 'body'))
   if (index >= 0) semantic.blocks[index] = { ...(semantic.blocks[index] as Extract<SemanticDocumentBlock, { type: 'paragraph' }>), text: body }
   else semantic.blocks.unshift({ id: 'block:opportunity', type: 'paragraph', text: body })
   return withSemanticDocument({ ...workspace, document: { ...workspace.document, body } }, semantic)
