@@ -1,8 +1,9 @@
 import { deriveGrowthLeaderClaim } from './knowledge.ts'
 import { getPresentationState, type PresentationSceneId } from './presentationState.ts'
 import { makeGrowthEvidenceInsertion } from './semanticDocument.ts'
+import { previewVersionedCommand } from './semanticPreview.ts'
 import { validateMetricFormula, type VersionedWorkspaceCommand } from './semanticCommands.ts'
-import type { Surface, WorkspaceState } from './model.ts'
+import type { Metric, Surface, WorkspaceState } from './model.ts'
 
 export type PaletteIntent =
   | { kind: 'command'; label: string; command: VersionedWorkspaceCommand }
@@ -15,6 +16,12 @@ export type PaletteIntent =
 
 function normalize(value: string) { return value.trim().toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim() }
 function semanticId(prefix: string) { return `${prefix}:${globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`}` }
+function metricId(workspace: WorkspaceState, label: string) {
+  const stem = `custom-${label.toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'') || 'metric'}`
+  let candidate=stem,index=2
+  while(workspace.metrics.some((metric)=>metric.id===candidate))candidate=`${stem}-${index++}`
+  return candidate
+}
 function sceneId(value: string): PresentationSceneId | null {
   const normalized = normalize(value)
   if (normalized === 'thesis' || normalized === 'opening' || normalized === 'intro') return 'thesis'
@@ -28,6 +35,11 @@ function findRegion(workspace: WorkspaceState, input: string) {
   const wanted = normalize(input)
   return workspace.regions.find((row) => normalize(row.region) === wanted || normalize(row.id) === wanted)
     ?? workspace.regions.find((row) => normalize(row.region).includes(wanted) || wanted.includes(normalize(row.region)))
+}
+function findMetric(workspace: WorkspaceState, input: string) {
+  const wanted=normalize(input)
+  return workspace.metrics.find((metric)=>normalize(metric.id)===wanted||normalize(metric.label)===wanted)
+    ??workspace.metrics.find((metric)=>normalize(metric.label).includes(wanted)||wanted.includes(normalize(metric.label)))
 }
 
 export function parsePaletteIntent(input: string, workspace: WorkspaceState): PaletteIntent {
@@ -108,6 +120,23 @@ export function parsePaletteIntent(input: string, workspace: WorkspaceState): Pa
     return { kind: 'command', label: `Change ${chart.label} to ${kind === 'line' ? 'line' : 'grouped bars'}`, command: { type: 'chart.kind', chartId: chart.id, kind } }
   }
 
+  const createMetricMatch=query.match(/^(?:create|add)\s+(?:a\s+)?metric\s+(.+?)\s+as\s+(currency|percent|number)\s*=\s*(.+)$/i)
+  if(createMetricMatch){
+    const label=createMetricMatch[1].trim(),format=createMetricMatch[2].toLowerCase() as Metric['format'],formula=createMetricMatch[3].trim()
+    const metric:Metric={id:metricId(workspace,label),label,value:0,previous:0,format,source:'Semantic model · Cmd/Ctrl+K metric',updatedAt:'just now',formula}
+    const command:VersionedWorkspaceCommand={type:'metric.create',metric}
+    try{previewVersionedCommand(workspace,command)}catch(error){return{kind:'error',message:error instanceof Error?error.message:'Invalid computed metric'}}
+    return{kind:'command',label:`Create metric ${label}`,command}
+  }
+  const removeMetricMatch=query.match(/^(?:remove|delete)\s+(?:the\s+)?metric\s+(.+)$/i)
+  if(removeMetricMatch){
+    const metric=findMetric(workspace,removeMetricMatch[1])
+    if(!metric)return{kind:'error',message:`Unknown metric: ${removeMetricMatch[1].trim()}`}
+    const command:VersionedWorkspaceCommand={type:'metric.remove',metricId:metric.id}
+    try{previewVersionedCommand(workspace,command)}catch(error){return{kind:'error',message:error instanceof Error?error.message:'Metric cannot be removed'}}
+    return{kind:'command',label:`Remove metric ${metric.label}`,command}
+  }
+
   const formulaMatch = query.match(/^(?:set|change|update)\s+(?:the\s+)?revenue\s+formula\s+(?:to\s+)?(.+)$/i)
   if (formulaMatch) {
     const formula = formulaMatch[1].trim()
@@ -136,5 +165,5 @@ export function parsePaletteIntent(input: string, workspace: WorkspaceState): Pa
   }
 
   const leader = deriveGrowthLeaderClaim(workspace)
-  return { kind: 'unknown', message: `I can insert semantic document blocks; edit actuals, plan values, formulas and the shared chart; reorder/hide scenes and edit speaker notes; manage source freshness and decisions; or navigate views. Current evidence leader: ${leader.statement}` }
+  return { kind: 'unknown', message: `I can create or remove computed metrics; insert semantic document blocks; edit actuals, plan values, formulas and the shared chart; reorder/hide scenes and edit speaker notes; manage source freshness and decisions; or navigate views. Current evidence leader: ${leader.statement}` }
 }
