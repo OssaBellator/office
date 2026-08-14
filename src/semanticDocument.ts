@@ -28,10 +28,22 @@ export type SemanticDocumentBlock =
   | { id: string; type: 'metric-embed'; metricIds: string[]; label: string }
   | { id: string; type: 'decision-embed'; decisionId: string }
 
+export type BlockAnnotationKind = 'comment' | 'task' | 'approval'
+export type BlockAnnotationStatus = 'open' | 'resolved' | 'pending' | 'approved'
+export type BlockAnnotation = {
+  id: string
+  blockId: string
+  kind: BlockAnnotationKind
+  body: string
+  owner: string
+  status: BlockAnnotationStatus
+}
+
 export type SemanticDocumentState = {
   blocks: SemanticDocumentBlock[]
   claims: SemanticClaim[]
   citations: SemanticCitation[]
+  annotations: BlockAnnotation[]
 }
 
 export type ResolvedSemanticClaim = SemanticClaim & {
@@ -41,7 +53,8 @@ export type ResolvedSemanticClaim = SemanticClaim & {
   liveRationale: string
 }
 
-type ExtendedWorkspaceState = WorkspaceState & { semanticDocument?: SemanticDocumentState }
+type PersistedSemanticDocumentState = Omit<SemanticDocumentState, 'annotations'> & { annotations?: BlockAnnotation[] }
+type ExtendedWorkspaceState = WorkspaceState & { semanticDocument?: PersistedSemanticDocumentState }
 
 function defaultSemanticDocument(workspace: WorkspaceState): SemanticDocumentState {
   const leader = workspace.regions.reduce((best, row) => row.growth > best.growth ? row : best)
@@ -67,12 +80,17 @@ function defaultSemanticDocument(workspace: WorkspaceState): SemanticDocumentSta
       evidenceObjectId: `region:${leader.id}`,
       locator: `Regions.${leader.region} · Growth`,
     }],
+    annotations: [
+      { id: 'annotation:growth-margin-review', blockId: 'block:growth-claim', kind: 'task', body: 'Validate the margin tradeoff before the board review.', owner: 'Strategy', status: 'open' },
+      { id: 'annotation:launch-approval', blockId: 'block:launch-decision', kind: 'approval', body: 'Approve the launch recommendation for the board narrative.', owner: 'Strategy', status: 'pending' },
+    ],
   }
 }
 
 export function getSemanticDocument(workspace: WorkspaceState): SemanticDocumentState {
   const persisted = (workspace as ExtendedWorkspaceState).semanticDocument
-  return persisted ? structuredClone(persisted) : defaultSemanticDocument(workspace)
+  if (!persisted) return defaultSemanticDocument(workspace)
+  return { ...structuredClone(persisted), annotations: structuredClone(persisted.annotations ?? []) }
 }
 
 function objectFor(id: string, label: string): WorkspaceObject {
@@ -84,7 +102,7 @@ function edge(from: string, to: string, description: string): DependencyEdge {
 }
 
 function isSemanticObjectId(id: string) {
-  return id.startsWith('block:') || id.startsWith('claim:') || id.startsWith('citation:')
+  return id.startsWith('block:') || id.startsWith('claim:') || id.startsWith('citation:') || id.startsWith('annotation:')
 }
 
 function ensureSemanticGraph(graph: WorkspaceGraph, semantic: SemanticDocumentState): WorkspaceGraph {
@@ -97,6 +115,7 @@ function ensureSemanticGraph(graph: WorkspaceGraph, semantic: SemanticDocumentSt
 
   for (const claim of semantic.claims) addObject(objectFor(claim.id, claim.statement))
   for (const citation of semantic.citations) addObject(objectFor(citation.id, citation.label))
+  for (const annotation of semantic.annotations) addObject(objectFor(annotation.id, `${annotation.kind}: ${annotation.body}`))
   for (const block of semantic.blocks) {
     const label = block.type === 'paragraph' ? 'Document paragraph' : block.type === 'claim' ? 'Claim block' : block.type === 'metric-embed' ? block.label : 'Decision block'
     addObject(objectFor(block.id, label))
@@ -111,6 +130,7 @@ function ensureSemanticGraph(graph: WorkspaceGraph, semantic: SemanticDocumentSt
   for (const citation of semantic.citations) {
     addEdge({ from: citation.evidenceObjectId, to: citation.id, relation: 'supports', description: 'Evidence object supports this citation' })
   }
+  for (const annotation of semantic.annotations) addEdge(edge(annotation.id, annotation.blockId, `${annotation.kind} is attached to this document block`))
   return { objects, edges }
 }
 
