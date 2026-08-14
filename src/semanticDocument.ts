@@ -1,4 +1,4 @@
-import type { WorkspaceState, WorkspaceGraph, WorkspaceObject, DependencyEdge } from './model.ts'
+import type { WorkspaceState, WorkspaceObject, DependencyEdge } from './model.ts'
 
 export type ClaimConfidence = 'low' | 'medium' | 'high'
 export type SemanticClaimPredicate =
@@ -105,9 +105,9 @@ function isSemanticObjectId(id: string) {
   return id.startsWith('block:') || id.startsWith('claim:') || id.startsWith('citation:') || id.startsWith('annotation:')
 }
 
-function ensureSemanticGraph(graph: WorkspaceGraph, semantic: SemanticDocumentState): WorkspaceGraph {
-  const objects = graph.objects.filter((object) => !isSemanticObjectId(object.id))
-  const edges = graph.edges.filter((item) => !isSemanticObjectId(item.from) && !isSemanticObjectId(item.to))
+function ensureSemanticGraph(workspace: WorkspaceState, semantic: SemanticDocumentState) {
+  const objects = workspace.graph.objects.filter((object) => !isSemanticObjectId(object.id))
+  const edges = workspace.graph.edges.filter((item) => !isSemanticObjectId(item.from) && !isSemanticObjectId(item.to))
   const objectIds = new Set(objects.map((object) => object.id))
   const edgeKeys = new Set(edges.map((item) => `${item.from}|${item.to}|${item.relation}`))
   const addObject = (object: WorkspaceObject) => { if (!objectIds.has(object.id)) { objectIds.add(object.id); objects.push(object) } }
@@ -126,6 +126,9 @@ function ensureSemanticGraph(graph: WorkspaceGraph, semantic: SemanticDocumentSt
   }
   for (const claim of semantic.claims) {
     for (const citationId of claim.citationIds) addEdge(edge(citationId, claim.id, 'Citation supports this claim'))
+    if (claim.predicate.type === 'growth-leader') {
+      for (const region of workspace.regions) addEdge({ from: `region:${region.id}`, to: claim.id, relation: 'supports', description: 'Regional growth participates in the growth-leader predicate' })
+    }
   }
   for (const citation of semantic.citations) {
     addEdge({ from: citation.evidenceObjectId, to: citation.id, relation: 'supports', description: 'Evidence object supports this citation' })
@@ -139,7 +142,7 @@ export function withSemanticDocument(workspace: WorkspaceState, semanticDocument
   return {
     ...workspace,
     document: firstParagraph ? { ...workspace.document, body: firstParagraph.text } : workspace.document,
-    graph: ensureSemanticGraph(workspace.graph, semanticDocument),
+    graph: ensureSemanticGraph(workspace, semanticDocument),
     semanticDocument: structuredClone(semanticDocument),
   } as WorkspaceState
 }
