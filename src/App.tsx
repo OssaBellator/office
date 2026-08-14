@@ -25,9 +25,12 @@ import {
   X,
 } from 'lucide-react'
 import {
+  cloneSeedWorkspace,
   formatMetric,
+  hydrateWorkspace,
   metricDelta,
-  seedWorkspace,
+  setDecisionStatus,
+  updateRegionField,
   type RegionRow,
   type Surface,
   type WorkspaceState,
@@ -51,9 +54,9 @@ const navItems: NavItem[] = [
 function loadWorkspace(): WorkspaceState {
   try {
     const raw = localStorage.getItem(STORAGE_KEY)
-    return raw ? JSON.parse(raw) : seedWorkspace
+    return hydrateWorkspace(raw ? JSON.parse(raw) : null)
   } catch {
-    return seedWorkspace
+    return cloneSeedWorkspace()
   }
 }
 
@@ -87,32 +90,16 @@ export default function App() {
   }
 
   const updateRegion = (id: string, field: keyof RegionRow, value: string | number) => {
-    setWorkspace((current) => {
-      const regions = current.regions.map((row) =>
-        row.id === id ? { ...row, [field]: value } : row,
-      )
-      const totalRevenue = regions.reduce((sum, row) => sum + row.revenue, 0)
-      const metrics = current.metrics.map((metric) =>
-        metric.id === 'revenue'
-          ? { ...metric, value: Number(totalRevenue.toFixed(1)), updatedAt: 'just now' }
-          : metric,
-      )
-      return { ...current, regions, metrics }
-    })
+    setWorkspace((current) => updateRegionField(current, id, field, value).workspace)
   }
 
   const approveDecision = () => {
-    setWorkspace((current) => ({
-      ...current,
-      decisions: current.decisions.map((decision) =>
-        decision.id === 'launch' ? { ...decision, status: 'approved' as const } : decision,
-      ),
-    }))
+    setWorkspace((current) => setDecisionStatus(current, 'launch', 'approved').workspace)
     setCommandOpen(false)
   }
 
   const restoreDemo = () => {
-    setWorkspace(seedWorkspace)
+    setWorkspace(cloneSeedWorkspace())
     setCommandOpen(false)
   }
 
@@ -172,12 +159,11 @@ export default function App() {
           <div className="sidebar-section-title">
             Sources <Plus size={14} />
           </div>
-          <div className="source-row">
-            <Database size={14} /> Finance model
-          </div>
-          <div className="source-row">
-            <Link2 size={14} /> Customer research
-          </div>
+          {workspace.sources.map((source) => (
+            <div className="source-row" key={source.id}>
+              {source.type === 'dataset' ? <Database size={14} /> : <Link2 size={14} />} {source.label}
+            </div>
+          ))}
         </div>
 
         <div className="sidebar-footer">
@@ -493,6 +479,9 @@ function ContextPanel({
   onClose: () => void
 }) {
   const revenue = workspace.metrics.find((metric) => metric.id === 'revenue')!
+  const latestEvent = workspace.history[0]
+  const connectedCount = workspace.graph.objects.filter((object) => object.surfaces.includes(surface)).length
+
   return (
     <aside className="context-panel">
       <div className="context-heading">
@@ -506,7 +495,7 @@ function ContextPanel({
           {surface === 'docs' ? <FileText size={16} /> : surface === 'data' ? <Table2 size={16} /> : <Presentation size={16} />}
           <div>
             <strong>{surface === 'docs' ? 'Strategy document' : surface === 'data' ? 'Revenue model' : 'Board narrative'}</strong>
-            <span>{surface === 'docs' ? '12 connected objects' : surface === 'data' ? '4 rows · 3 metrics' : '4 scenes · 3 live objects'}</span>
+            <span>{connectedCount} connected objects</span>
           </div>
         </div>
       </div>
@@ -526,7 +515,17 @@ function ContextPanel({
 
       <div className="context-section">
         <span className="context-label">Activity</span>
-        <div className="activity-row"><Clock3 size={14} /><div><strong>Revenue model updated</strong><span>Shared object propagated · just now</span></div></div>
+        <div className="activity-row">
+          <Clock3 size={14} />
+          <div>
+            <strong>{latestEvent?.summary ?? 'No semantic changes yet'}</strong>
+            <span>
+              {latestEvent
+                ? `${latestEvent.affectedObjectIds.length} downstream objects · ${latestEvent.changedAt}`
+                : 'Edits to shared objects will appear here'}
+            </span>
+          </div>
+        </div>
         <div className="activity-row"><CheckCircle2 size={14} /><div><strong>Source link healthy</strong><span>No broken references</span></div></div>
       </div>
     </aside>
