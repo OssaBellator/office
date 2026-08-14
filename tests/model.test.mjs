@@ -82,3 +82,90 @@ test('unknown object mutations fail loudly', () => {
   assert.throws(() => updateRegionField(cloneSeedWorkspace(), 'moon', 'revenue', 1), /Unknown region/)
   assert.throws(() => setDecisionStatus(cloneSeedWorkspace(), 'missing', 'approved'), /Unknown decision/)
 })
+
+test('semantic command sessions undo and redo a connected revenue edit atomically', async () => {
+  const { createWorkspaceSession, executeWorkspaceCommand, redoWorkspaceSession, undoWorkspaceSession } = await import('../src/model.ts')
+  const initial = cloneSeedWorkspace()
+  let session = createWorkspaceSession(initial)
+
+  session = executeWorkspaceCommand(session, {
+    type: 'region.update',
+    regionId: 'apac',
+    field: 'revenue',
+    value: 10,
+    changedAt: 'now',
+  })
+
+  assert.equal(session.present.regions.find((row) => row.id === 'apac').revenue, 10)
+  assert.equal(session.present.metrics.find((metric) => metric.id === 'revenue').value, 44.1)
+  assert.equal(session.past.length, 1)
+
+  session = undoWorkspaceSession(session)
+  assert.equal(session.present.regions.find((row) => row.id === 'apac').revenue, 8.7)
+  assert.equal(session.present.metrics.find((metric) => metric.id === 'revenue').value, 42.8)
+  assert.equal(session.present.history.length, 0)
+  assert.equal(session.future.length, 1)
+
+  session = redoWorkspaceSession(session)
+  assert.equal(session.present.regions.find((row) => row.id === 'apac').revenue, 10)
+  assert.equal(session.present.metrics.find((metric) => metric.id === 'revenue').value, 44.1)
+  assert.equal(session.present.history[0].summary, 'APAC revenue updated')
+})
+
+test('a new semantic command after undo clears the redo branch', async () => {
+  const { createWorkspaceSession, executeWorkspaceCommand, redoWorkspaceSession, undoWorkspaceSession } = await import('../src/model.ts')
+  let session = createWorkspaceSession(cloneSeedWorkspace())
+  session = executeWorkspaceCommand(session, {
+    type: 'decision.status',
+    decisionId: 'launch',
+    status: 'approved',
+  })
+  session = undoWorkspaceSession(session)
+  assert.equal(session.future.length, 1)
+
+  session = executeWorkspaceCommand(session, {
+    type: 'region.update',
+    regionId: 'eu',
+    field: 'growth',
+    value: 25,
+  })
+  assert.equal(session.future.length, 0)
+  assert.equal(redoWorkspaceSession(session), session)
+})
+
+test('AI-style document append is a reversible semantic transaction', async () => {
+  const { createWorkspaceSession, executeWorkspaceCommand, undoWorkspaceSession } = await import('../src/model.ts')
+  const original = cloneSeedWorkspace()
+  let session = createWorkspaceSession(original)
+
+  session = executeWorkspaceCommand(session, {
+    type: 'document.append',
+    text: 'Evidence: APAC has the strongest regional growth rate.',
+  })
+  assert.match(session.present.document.body, /Evidence: APAC/)
+  assert.equal(session.present.history[0].summary, 'Strategy evidence appended')
+
+  session = undoWorkspaceSession(session)
+  assert.equal(session.present.document.body, original.document.body)
+})
+
+test('lineage queries expose semantic upstream and downstream objects', async () => {
+  const { getObjectLineage, getUpstreamObjectIds } = await import('../src/model.ts')
+  const workspace = cloneSeedWorkspace()
+  const revenue = getObjectLineage(workspace, 'metric:revenue')
+
+  assert.deepEqual(new Set(revenue.upstream.map((object) => object.id)), new Set([
+    'region:na',
+    'region:eu',
+    'region:apac',
+    'region:latam',
+  ]))
+  assert.equal(revenue.downstream.some((object) => object.id === 'document:strategy'), true)
+  assert.equal(revenue.downstream.some((object) => object.id === 'scene:performance'), true)
+  assert.equal(getUpstreamObjectIds(workspace.graph, ['scene:decision']).includes('region:apac'), true)
+})
+
+test('lineage queries fail for unknown objects', async () => {
+  const { getObjectLineage } = await import('../src/model.ts')
+  assert.throws(() => getObjectLineage(cloneSeedWorkspace(), 'metric:missing'), /Unknown workspace object/)
+})
