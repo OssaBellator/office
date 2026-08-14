@@ -148,6 +148,6 @@ test('version snapshots allow arbitrary revision comparison including abandoned 
 test('metric formulas enforce semantic unit compatibility', async () => {
   const { validateMetricFormula } = await import('../src/semanticCommands.ts')
   const workspace = cloneSeedWorkspace()
-  assert.throws(() => validateMetricFormula(workspace, 'revenue', 'SUM(Regions.Growth)'), /requires a currency field/)
+  assert.throws(() => validateMetricFormula(workspace, 'revenue', 'SUM(Regions.Growth)'), /currency but the formula produces percent/)
   assert.equal(validateMetricFormula(workspace, 'revenue', 'AVERAGE(Regions.Revenue)').value, 10.7)
 })
