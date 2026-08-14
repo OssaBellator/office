@@ -9,6 +9,7 @@ import './plan-presentation.css'
 import './command-intent.css'
 import './local-tools.css'
 import './plan-model.css'
+import './semantic-document.css'
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
