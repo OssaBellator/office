@@ -1,12 +1,12 @@
 import {
   appendDocumentText,
   evaluateMetric,
+  evaluateWorkspaceFormula,
   getDownstreamObjectIds,
   getWorkspaceImpacts,
   planSchema,
   regionsSchema,
   updatePlanField,
-  workspaceTables,
   setDecisionStatus,
   updateRegionField,
   type ChangeEvent,
@@ -15,7 +15,6 @@ import {
   type WorkspaceMutationResult,
   type WorkspaceState,
 } from './model.ts'
-import { evaluateSemanticExpression } from './expressions.ts'
 import { getEditableChart, updateEditableChartKind, type EditableChartKind } from './chartModel.ts'
 import {
   getPresentationState,
@@ -77,14 +76,19 @@ function syncMetricFormulaEdges(workspace: WorkspaceState, metricId: string, for
   const metricObjectId = `metric:${metricId}`
   const retained = workspace.graph.edges.filter((edge) => !(edge.to === metricObjectId && edge.relation === 'derives'))
   if (!formula) return { ...workspace, graph: { ...workspace.graph, edges: retained } }
-  const analysis = evaluateSemanticExpression(formula, workspaceTables(workspace))
+  const analysis = evaluateWorkspaceFormula(workspace, formula, [metricId])
   const metric = workspace.metrics.find((candidate) => candidate.id === metricId)
   const sourceIds = new Set<string>()
   for (const term of analysis.terms) {
     if (term.tableId === 'Regions') workspace.regions.forEach((row) => sourceIds.add(`region:${row.id}`))
     if (term.tableId === 'Plan') workspace.plans.forEach((row) => sourceIds.add(`plan:${row.id}`))
   }
-  const description = `${analysis.terms.map((term) => `${term.tableId}.${term.fieldId}`).join(' + ')} contributes to ${metric?.label ?? metricId}`
+  analysis.metricDependencies.forEach((dependency) => sourceIds.add(`metric:${dependency}`))
+  const references = [
+    ...analysis.terms.map((term) => `${term.tableId}.${term.fieldId}`),
+    ...analysis.metricDependencies.map((dependency) => `METRIC(${dependency})`),
+  ]
+  const description = `${references.join(' + ')} contributes to ${metric?.label ?? metricId}`
   const derived = [...sourceIds].map((from) => ({ from, to: metricObjectId, relation: 'derives' as const, description }))
   return { ...workspace, graph: { ...workspace.graph, edges: [...retained, ...derived] } }
 }
@@ -92,8 +96,8 @@ function syncMetricFormulaEdges(workspace: WorkspaceState, metricId: string, for
 export function validateMetricFormula(workspace: WorkspaceState, metricId: string, formula: string) {
   const metric = workspace.metrics.find((candidate) => candidate.id === metricId)
   if (!metric) throw new Error(`Unknown metric: ${metricId}`)
-  const analysis = evaluateSemanticExpression(formula, workspaceTables(workspace))
-  if (analysis.terms.length === 0) throw new Error('Metric formula must reference at least one semantic field')
+  const analysis = evaluateWorkspaceFormula(workspace, formula, [metricId])
+  if (analysis.terms.length === 0 && analysis.metricDependencies.length === 0) throw new Error('Metric formula must reference at least one semantic field or metric')
   for (const parsed of analysis.terms) {
     const schema = [regionsSchema, planSchema].find((candidate) => candidate.id === parsed.tableId)
     if (!schema) throw new Error(`Unknown table: ${parsed.tableId}`)
