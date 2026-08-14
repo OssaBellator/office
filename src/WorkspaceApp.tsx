@@ -8,6 +8,10 @@ import { previewVersionedCommand } from './semanticPreview'
 import { parsePaletteIntent } from './intent'
 import { makeGrowthEvidenceInsertion } from './semanticDocument'
 import { exportWorkspaceSession, importWorkspaceSession } from './workspaceIO'
+import { exportPlanCsv, exportPresentationMarkdown, exportRegionsCsv, exportStrategyMarkdown } from './compatibilityExports'
+import { planPlanCsvImport, planRegionsCsvImport } from './csvImportPlanner'
+import { planWorkspaceAutomation, type WorkspaceAutomationPlan } from './automationPlan'
+import { locateWorkspaceObject } from './workspaceNavigation'
 import {
   createVersionedWorkspaceSession,
   executeVersionedWorkspaceCommand,
@@ -20,6 +24,7 @@ import type { VersionedWorkspaceCommand } from './semanticCommands'
 import {
   hydrateWorkspaceSession, LEGACY_WORKSPACE_STORAGE_KEY, serializeWorkspaceSession, SESSION_STORAGE_KEY,
 } from './sessionStore'
+import { BatchPreviewModal } from './components/BatchPreviewModal'
 import { CommandPalette } from './components/CommandPalette'
 import { ContextPanel } from './components/ContextPanel'
 import { DataSurface } from './components/DataSurface'
@@ -27,6 +32,7 @@ import { DocsSurface } from './components/DocsSurface'
 import { HistoryBrowser } from './components/HistoryBrowser'
 import { PresentSurface } from './components/PresentSurface'
 import { PresentationPlayer } from './components/PresentationPlayer'
+import { WorkspaceTransferDialog, type WorkspaceTransferMode } from './components/WorkspaceTransferDialog'
 import './model-view.css'
 import './history-browser.css'
 
@@ -54,6 +60,20 @@ function isEditingText(target: EventTarget | null) {
   return tag === 'input' || tag === 'textarea' || tag === 'select' || target.isContentEditable
 }
 
+function slug(value: string) {
+  return value.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'workspace'
+}
+
+function downloadText(filename: string, text: string, type: string) {
+  const blob = new Blob([text], { type })
+  const url = URL.createObjectURL(blob)
+  const anchor = document.createElement('a')
+  anchor.href = url
+  anchor.download = filename
+  anchor.click()
+  URL.revokeObjectURL(url)
+}
+
 export default function WorkspaceApp() {
   const [surface, setSurface] = useState<Surface>('docs')
   const [session, setSession] = useState<VersionedWorkspaceSession>(loadSession)
@@ -63,6 +83,9 @@ export default function WorkspaceApp() {
   const [historyOpen, setHistoryOpen] = useState(false)
   const [workspaceNotice, setWorkspaceNotice] = useState<string | null>(null)
   const [presentationOpen, setPresentationOpen] = useState(false)
+  const [selectedObjectId, setSelectedObjectId] = useState<string | null>(null)
+  const [transferMode, setTransferMode] = useState<WorkspaceTransferMode | null>(null)
+  const [pendingAutomation, setPendingAutomation] = useState<WorkspaceAutomationPlan | null>(null)
   const workspace = session.present
   const commandPreview = pendingCommand ? previewVersionedCommand(workspace, pendingCommand) : null
 
@@ -82,7 +105,9 @@ export default function WorkspaceApp() {
         setSession((current) => event.shiftKey ? redoVersionedWorkspaceSession(current) : undoVersionedWorkspaceSession(current))
         return
       }
-      if (event.key === 'Escape') { setPendingCommand(null); setCommandOpen(false); setHistoryOpen(false); setPresentationOpen(false) }
+      if (event.key === 'Escape') {
+        setPendingCommand(null); setCommandOpen(false); setHistoryOpen(false); setPresentationOpen(false); setTransferMode(null); setPendingAutomation(null)
+      }
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
@@ -103,18 +128,19 @@ export default function WorkspaceApp() {
   const applyPendingCommand = () => { if (!pendingCommand) return; execute(pendingCommand); setPendingCommand(null); setCommandOpen(false) }
   const closeCommandPalette = () => { setPendingCommand(null); setCommandOpen(false) }
   const openCommandPalette = () => { setPendingCommand(null); setCommandOpen(true) }
-  const restoreDemo = () => { setSession(createVersionedWorkspaceSession(cloneSeedWorkspace())); setPendingCommand(null); setCommandOpen(false); setHistoryOpen(false); setPresentationOpen(false) }
-  const revertTransaction = (transactionId: string) => setSession((current) => revertVersionedTransaction(current, transactionId).session)
-  const exportBackup = () => {
-    const blob = new Blob([exportWorkspaceSession(session)], { type: 'application/json' })
-    const url = URL.createObjectURL(blob)
-    const anchor = document.createElement('a')
-    anchor.href = url
-    anchor.download = `frame-${workspace.title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'workspace'}.json`
-    anchor.click()
-    URL.revokeObjectURL(url)
-    setWorkspaceNotice('Workspace backup exported')
+  const restoreDemo = () => {
+    setSession(createVersionedWorkspaceSession(cloneSeedWorkspace())); setPendingCommand(null); setCommandOpen(false); setHistoryOpen(false); setPresentationOpen(false); setSelectedObjectId(null); setTransferMode(null); setPendingAutomation(null)
   }
+  const revertTransaction = (transactionId: string) => setSession((current) => revertVersionedTransaction(current, transactionId).session)
+
+  const baseName = `frame-${slug(workspace.title)}`
+  const exportBackup = () => { downloadText(`${baseName}.json`, exportWorkspaceSession(session), 'application/json'); setWorkspaceNotice('Workspace backup exported') }
+  const exportStrategy = () => { downloadText(`${baseName}-strategy.md`, exportStrategyMarkdown(workspace), 'text/markdown;charset=utf-8'); setWorkspaceNotice('Strategy Markdown exported') }
+  const exportBoard = () => { downloadText(`${baseName}-board.md`, exportPresentationMarkdown(workspace), 'text/markdown;charset=utf-8'); setWorkspaceNotice('Board narrative exported') }
+  const exportRegions = () => { downloadText(`${baseName}-actuals.csv`, exportRegionsCsv(workspace), 'text/csv;charset=utf-8'); setWorkspaceNotice('Actuals CSV exported') }
+  const exportPlan = () => { downloadText(`${baseName}-plan.csv`, exportPlanCsv(workspace), 'text/csv;charset=utf-8'); setWorkspaceNotice('Plan CSV exported') }
+  const exportPortableSet = () => { exportStrategy(); exportBoard(); exportRegions(); exportPlan(); setWorkspaceNotice('Portable workspace set exported') }
+
   const importBackup = () => {
     const input = document.createElement('input')
     input.type = 'file'
@@ -125,10 +151,7 @@ export default function WorkspaceApp() {
       try {
         const restored = importWorkspaceSession(await file.text())
         setSession(restored)
-        setPendingCommand(null)
-        setCommandOpen(false)
-        setHistoryOpen(false)
-        setPresentationOpen(false)
+        setPendingCommand(null); setCommandOpen(false); setHistoryOpen(false); setPresentationOpen(false); setSelectedObjectId(null); setTransferMode(null)
         setWorkspaceNotice(`Imported ${file.name}`)
       } catch (error) {
         setWorkspaceNotice(error instanceof Error ? error.message : 'Could not import workspace')
@@ -136,6 +159,47 @@ export default function WorkspaceApp() {
     }
     input.click()
   }
+
+  const stageCsvImport = (kind: 'regions' | 'plan') => {
+    const input = document.createElement('input')
+    input.type = 'file'
+    input.accept = '.csv,text/csv'
+    input.onchange = async () => {
+      const file = input.files?.[0]
+      if (!file) return
+      try {
+        const text = await file.text()
+        const commands = kind === 'regions' ? planRegionsCsvImport(workspace, text) : planPlanCsvImport(workspace, text)
+        if (commands.length === 0) { setTransferMode(null); setWorkspaceNotice(`${file.name} already matches the workspace`); return }
+        setPendingAutomation(planWorkspaceAutomation(session, 'owner', commands))
+        setTransferMode(null)
+        setWorkspaceNotice(`Previewing ${commands.length} changes from ${file.name}`)
+      } catch (error) {
+        setWorkspaceNotice(error instanceof Error ? error.message : 'Could not import CSV')
+      }
+    }
+    input.click()
+  }
+  const applyPendingAutomation = () => {
+    if (!pendingAutomation) return
+    setSession(pendingAutomation.resultingSession)
+    setWorkspaceNotice(`Applied ${pendingAutomation.steps.length} imported change${pendingAutomation.steps.length === 1 ? '' : 's'}`)
+    setPendingAutomation(null)
+  }
+
+  const openWorkspaceObject = (objectId: string) => {
+    try {
+      const location = locateWorkspaceObject(workspace, objectId)
+      setSurface(location.surface)
+      setSelectedObjectId(objectId)
+      setContextOpen(true)
+      closeCommandPalette()
+      setWorkspaceNotice(`Focused ${location.label}`)
+    } catch (error) {
+      setWorkspaceNotice(error instanceof Error ? error.message : 'Could not open workspace object')
+    }
+  }
+
   const runPaletteQuery = (query: string) => {
     const intent = parsePaletteIntent(query, workspace)
     switch (intent.kind) {
@@ -157,7 +221,7 @@ export default function WorkspaceApp() {
         <div className="workspace-label">Workspace</div>
         <button className="workspace-switcher"><div className="workspace-avatar">FY</div><div><strong>{workspace.title}</strong><span>Product & strategy</span></div><ChevronRight size={15} /></button>
         <nav className="surface-nav" aria-label="Workspace views">{navItems.map((item) => { const Icon = item.icon; return <button key={item.id} className={surface === item.id ? 'nav-item active' : 'nav-item'} onClick={() => setSurface(item.id)}><Icon size={16} /><span>{item.label}</span><small>{item.meta}</small></button> })}</nav>
-        <div className="sidebar-section"><div className="sidebar-section-title">Sources <Plus size={14} /></div>{workspace.sources.map((source) => <div className="source-row" key={source.id}>{source.type === 'dataset' ? <Database size={14} /> : <Link2 size={14} />} {source.label}</div>)}</div>
+        <div className="sidebar-section"><div className="sidebar-section-title">Sources <Plus size={14} /></div>{workspace.sources.map((source) => <button className="source-row" key={source.id} onClick={() => openWorkspaceObject(source.id)}>{source.type === 'dataset' ? <Database size={14} /> : <Link2 size={14} />} {source.label}</button>)}</div>
         <div className="sidebar-footer"><div className="avatar">OB</div><div><strong>Ossa</strong><span>Workspace owner</span></div><MoreHorizontal size={16} /></div>
       </aside>
 
@@ -172,8 +236,8 @@ export default function WorkspaceApp() {
             </div>
             <button className="secondary-button history-open-button" onClick={() => setHistoryOpen(true)} title="Semantic history (Cmd/Ctrl + Shift + H)"><Clock3 size={14} /> History</button>
             <button className="icon-button" aria-label="Toggle context" onClick={() => setContextOpen((value) => !value)}><Grid3X3 size={16} /></button>
-            <button className="secondary-button" onClick={exportBackup}>Export</button>
-            <button className="secondary-button" onClick={importBackup}>Import</button>
+            <button className="secondary-button" onClick={() => setTransferMode('export')}>Export</button>
+            <button className="secondary-button" onClick={() => setTransferMode('import')}>Import</button>
             {surface === 'present' && <button className="primary-button" onClick={() => setPresentationOpen(true)}><Play size={14} /> Present</button>}
           </div>
         </header>
@@ -184,14 +248,16 @@ export default function WorkspaceApp() {
             {surface === 'data' && <DataSurface workspace={workspace} updateRegion={updateRegion} updatePlan={updatePlan} updateMetricFormula={updateMetricFormula} updateChartKind={(chartId, kind) => execute({ type: 'chart.kind', chartId, kind })} />}
             {surface === 'present' && <PresentSurface workspace={workspace} onPresentationCommand={execute} />}
           </section>
-          {contextOpen && <ContextPanel workspace={workspace} surface={surface} transactions={session.past} onSetSourceStatus={updateSourceStatus} onClose={() => setContextOpen(false)} />}
+          {contextOpen && <ContextPanel workspace={workspace} surface={surface} transactions={session.past} selectedObjectId={selectedObjectId} onSemanticCommand={execute} onSetSourceStatus={updateSourceStatus} onClose={() => setContextOpen(false)} />}
         </div>
       </main>
 
       <button className="ai-fab" onClick={openCommandPalette} aria-label="Open Frame command palette"><Sparkles size={18} /></button>
-      {commandOpen && <CommandPalette surface={surface} preview={commandPreview} onClose={closeCommandPalette} onStageEvidence={stageEvidence} onStageApproval={stageApproval} onApplyPreview={applyPendingCommand} onCancelPreview={() => setPendingCommand(null)} onSubmitQuery={runPaletteQuery} onRestore={restoreDemo} onSwitch={setSurface} />}
+      {commandOpen && <CommandPalette workspace={workspace} surface={surface} preview={commandPreview} onClose={closeCommandPalette} onStageEvidence={stageEvidence} onStageApproval={stageApproval} onApplyPreview={applyPendingCommand} onCancelPreview={() => setPendingCommand(null)} onSubmitQuery={runPaletteQuery} onOpenObject={openWorkspaceObject} onRestore={restoreDemo} onSwitch={setSurface} />}
       {historyOpen && <HistoryBrowser session={session} onClose={() => setHistoryOpen(false)} onRevert={revertTransaction} />}
       {presentationOpen && <PresentationPlayer workspace={workspace} onClose={() => setPresentationOpen(false)} />}
+      {transferMode && <WorkspaceTransferDialog mode={transferMode} onClose={() => setTransferMode(null)} onExportBackup={exportBackup} onExportStrategy={exportStrategy} onExportBoard={exportBoard} onExportRegions={exportRegions} onExportPlan={exportPlan} onExportAll={exportPortableSet} onImportBackup={importBackup} onImportRegions={() => stageCsvImport('regions')} onImportPlan={() => stageCsvImport('plan')} />}
+      {pendingAutomation && <BatchPreviewModal plan={pendingAutomation} title="Import spreadsheet changes" onApply={applyPendingAutomation} onClose={() => setPendingAutomation(null)} />}
     </div>
   )
 }
