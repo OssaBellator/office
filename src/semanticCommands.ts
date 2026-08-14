@@ -15,6 +15,7 @@ import {
   type WorkspaceState,
 } from './model.ts'
 import { evaluateSemanticExpression } from './expressions.ts'
+import { getEditableChart, updateEditableChartKind, type EditableChartKind } from './chartModel.ts'
 import {
   getSemanticDocument,
   updateSemanticLegacyBody,
@@ -41,6 +42,7 @@ export type VersionedWorkspaceCommand =
   | { type: 'annotation.insert'; annotation: BlockAnnotation; changedAt?: string }
   | { type: 'annotation.update'; annotationId: string; field: 'body' | 'owner' | 'status'; value: string | BlockAnnotationStatus; changedAt?: string }
   | { type: 'annotation.remove'; annotationId: string; changedAt?: string }
+  | { type: 'chart.kind'; chartId: string; kind: EditableChartKind; changedAt?: string }
   | { type: 'metric.formula'; metricId: string; formula: string | null; fallbackValue?: number; changedAt?: string }
   | { type: 'source.status'; sourceId: string; status: 'live' | 'stale'; changedAt?: string }
 
@@ -205,6 +207,11 @@ export function runVersionedCommand(workspace: WorkspaceState, command: Versione
       semantic.annotations = semantic.annotations.filter((item) => item.id !== command.annotationId)
       return semanticMutation(workspace, semantic, `Removed ${annotation.kind}`, command.changedAt ?? 'just now', [command.annotationId])
     }
+    case 'chart.kind': {
+      const chart = getEditableChart(workspace, command.chartId)
+      const next = updateEditableChartKind(workspace, command.chartId, command.kind)
+      return directMutation(workspace, `${chart.label} changed to ${command.kind === 'line' ? 'line' : 'grouped bars'}`, command.changedAt ?? 'just now', [`chart:${command.chartId}`], next)
+    }
     case 'metric.formula': return updateMetricFormula(workspace, command.metricId, command.formula, command.fallbackValue, command.changedAt)
     case 'source.status': {
       const existing = workspace.sources.find((source) => source.id === command.sourceId)
@@ -235,6 +242,7 @@ export function versionedCommandIsNoop(workspace: WorkspaceState, command: Versi
     case 'annotation.insert': return getSemanticDocument(workspace).annotations.some((annotation) => annotation.id === command.annotation.id)
     case 'annotation.update': return getSemanticDocument(workspace).annotations.find((annotation) => annotation.id === command.annotationId)?.[command.field] === command.value
     case 'annotation.remove': return !getSemanticDocument(workspace).annotations.some((annotation) => annotation.id === command.annotationId)
+    case 'chart.kind': return getEditableChart(workspace, command.chartId).kind === command.kind
     case 'metric.formula': return (workspace.metrics.find((candidate) => candidate.id === command.metricId)?.formula ?? null) === command.formula
     case 'source.status': return workspace.sources.find((source) => source.id === command.sourceId)?.status === command.status
   }
