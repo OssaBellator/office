@@ -1,3 +1,4 @@
+import type { Metric } from './model.ts'
 import type { VersionedWorkspaceCommand } from './semanticCommands.ts'
 import type { BlockAnnotation, SemanticCitation, SemanticClaim, SemanticDocumentBlock, SemanticDocumentState } from './semanticDocument.ts'
 import type { PresentationState } from './presentationState.ts'
@@ -13,6 +14,19 @@ function optionalText(value: unknown, field: string) { return value === undefine
 function oneOf<T extends string>(value: unknown, field: string, allowed: readonly T[]): T { const result=text(value,field) as T;if(!allowed.includes(result))throw new Error(`${field} must be one of: ${allowed.join(', ')}`);return result }
 function array(value: unknown, field: string) { if (!Array.isArray(value)) throw new Error(`${field} must be an array`); return value }
 
+function parseMetric(value: unknown): Metric {
+  const input=record(value)
+  return {
+    id:text(input.id,'metric.id'),
+    label:text(input.label,'metric.label'),
+    value:number(input.value,'metric.value'),
+    previous:number(input.previous,'metric.previous'),
+    format:oneOf(input.format,'metric.format',['currency','percent','number'] as const),
+    source:text(input.source,'metric.source'),
+    updatedAt:text(input.updatedAt,'metric.updatedAt'),
+    formula:input.formula===undefined?undefined:text(input.formula,'metric.formula'),
+  }
+}
 function parseBlock(value: unknown): SemanticDocumentBlock {
   const input = record(value), id=text(input.id,'block.id'), type=oneOf(input.type,'block.type',['paragraph','claim','metric-embed','decision-embed'] as const)
   if(type==='paragraph')return{id,type,text:text(input.text,'block.text')}
@@ -52,6 +66,8 @@ export function parseWorkspaceCommand(value: unknown): VersionedWorkspaceCommand
     case'presentation.scene.move':return{type,sceneId:oneOf(input.sceneId,'sceneId',['thesis','performance','signal','decision'] as const),toIndex:number(input.toIndex,'toIndex'),changedAt}
     case'presentation.scene.visibility':return{type,sceneId:oneOf(input.sceneId,'sceneId',['thesis','performance','signal','decision'] as const),visible:boolean(input.visible,'visible'),changedAt}
     case'presentation.note.update':return{type,sceneId:oneOf(input.sceneId,'sceneId',['thesis','performance','signal','decision'] as const),note:text(input.note,'note'),changedAt}
+    case'metric.create':return{type,metric:parseMetric(input.metric),changedAt}
+    case'metric.remove':return{type,metricId:text(input.metricId,'metricId'),changedAt}
     case'metric.formula':return{type,metricId:text(input.metricId,'metricId'),formula:input.formula===null?null:text(input.formula,'formula'),fallbackValue:input.fallbackValue===undefined?undefined:number(input.fallbackValue,'fallbackValue'),changedAt}
     case'source.status':return{type,sourceId:text(input.sourceId,'sourceId'),status:oneOf(input.status,'status',['live','stale'] as const),changedAt}
     default:throw new Error(`Unknown workspace command type: ${type}`)
