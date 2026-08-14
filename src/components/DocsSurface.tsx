@@ -1,10 +1,12 @@
 import { useEffect, useState } from 'react'
-import { ArrowUpRight, BarChart3, CheckCircle2, ChevronDown, ChevronUp, Circle, FileText, Link2, Plus, Quote, Sparkles, Trash2 } from 'lucide-react'
+import { ArrowUpRight, BarChart3, CheckCircle2, ChevronDown, ChevronUp, Circle, FileText, Link2, ListTodo, MessageSquare, Plus, Quote, ShieldCheck, Sparkles, Trash2 } from 'lucide-react'
 import { formatMetric, metricDelta, type WorkspaceState } from '../model'
 import {
   getSemanticDocument,
   makeGrowthEvidenceInsertion,
   resolveSemanticClaim,
+  type BlockAnnotation,
+  type BlockAnnotationKind,
   type SemanticCitation,
   type SemanticDocumentBlock,
 } from '../semanticDocument'
@@ -61,7 +63,7 @@ export function DocsSurface({
         <textarea className="doc-summary" value={draft.summary} onChange={(event) => edit('summary', event.target.value)} onBlur={() => commit('summary')} aria-label="Executive summary" rows={3} />
 
         <div className="doc-divider" />
-        <div className="semantic-block-heading"><div><span>SEMANTIC DOCUMENT</span><h2>Strategy blocks</h2></div><small>{semantic.blocks.length} blocks · versioned independently</small></div>
+        <div className="semantic-block-heading"><div><span>SEMANTIC DOCUMENT</span><h2>Strategy blocks</h2></div><small>{semantic.blocks.length} blocks · {semantic.annotations.length} reviews</small></div>
 
         <div className="semantic-block-list">
           {semantic.blocks.map((block, index) => (
@@ -77,6 +79,7 @@ export function DocsSurface({
                 {block.type === 'claim' && <ClaimBlock workspace={workspace} block={block} onSemanticCommand={onSemanticCommand} />}
                 {block.type === 'metric-embed' && <MetricEmbed workspace={workspace} block={block} onOpenData={onOpenData} />}
                 {block.type === 'decision-embed' && <DecisionEmbed workspace={workspace} block={block} />}
+                <BlockReview workspace={workspace} blockId={block.id} onSemanticCommand={onSemanticCommand} />
               </div>
             </div>
           ))}
@@ -138,4 +141,32 @@ function DecisionEmbed({ workspace, block }: { workspace: WorkspaceState; block:
   const decision = workspace.decisions.find((item) => item.id === block.decisionId)
   if (!decision) return <div className="decision-card"><Circle size={19} /><div><strong>Missing decision</strong></div></div>
   return <div><span className="semantic-block-kind"><CheckCircle2 size={12} /> Shared decision</span><div className="decision-card">{decision.status === 'approved' ? <CheckCircle2 size={19} /> : <Circle size={19} />}<div><strong>{decision.title}</strong><p>{decision.rationale}</p><span>{decision.status === 'approved' ? 'Approved' : 'Pending approval'} · Owner: {decision.owner}</span></div></div></div>
+}
+
+function BlockReview({ workspace, blockId, onSemanticCommand }: { workspace: WorkspaceState; blockId: string; onSemanticCommand: (command: VersionedWorkspaceCommand) => void }) {
+  const annotations = getSemanticDocument(workspace).annotations.filter((annotation) => annotation.blockId === blockId)
+  const add = (kind: BlockAnnotationKind) => {
+    const suffix = globalThis.crypto?.randomUUID?.() ?? `${Date.now()}`
+    const annotation: BlockAnnotation = {
+      id: `annotation:${suffix}`,
+      blockId,
+      kind,
+      body: kind === 'comment' ? 'Add review context…' : kind === 'task' ? 'Follow up on this block' : 'Approve this block for the next review',
+      owner: 'Strategy',
+      status: kind === 'approval' ? 'pending' : 'open',
+    }
+    onSemanticCommand({ type: 'annotation.insert', annotation })
+  }
+  return <div className="block-review"><div className="block-review-heading"><span>Review</span><div><button onClick={() => add('comment')}><MessageSquare size={11} /> Comment</button><button onClick={() => add('task')}><ListTodo size={11} /> Task</button><button onClick={() => add('approval')}><ShieldCheck size={11} /> Approval</button></div></div>{annotations.length > 0 && <div className="annotation-list">{annotations.map((annotation) => <AnnotationItem annotation={annotation} onSemanticCommand={onSemanticCommand} key={annotation.id} />)}</div>}</div>
+}
+
+function AnnotationItem({ annotation, onSemanticCommand }: { annotation: BlockAnnotation; onSemanticCommand: (command: VersionedWorkspaceCommand) => void }) {
+  const [body, setBody] = useState(annotation.body)
+  const [owner, setOwner] = useState(annotation.owner)
+  useEffect(() => setBody(annotation.body), [annotation.body])
+  useEffect(() => setOwner(annotation.owner), [annotation.owner])
+  const Icon = annotation.kind === 'comment' ? MessageSquare : annotation.kind === 'task' ? ListTodo : ShieldCheck
+  const done = annotation.status === 'resolved' || annotation.status === 'approved'
+  const nextStatus = annotation.kind === 'approval' ? (annotation.status === 'approved' ? 'pending' : 'approved') : (annotation.status === 'resolved' ? 'open' : 'resolved')
+  return <div className={`annotation-item ${annotation.kind} ${done ? 'done' : ''}`}><Icon size={13} /><textarea value={body} onChange={(event) => setBody(event.target.value)} onBlur={() => { if (body !== annotation.body) onSemanticCommand({ type: 'annotation.update', annotationId: annotation.id, field: 'body', value: body }) }} rows={1} aria-label={`${annotation.kind} text`} /><input className="annotation-owner" value={owner} onChange={(event) => setOwner(event.target.value)} onBlur={() => { if (owner !== annotation.owner) onSemanticCommand({ type: 'annotation.update', annotationId: annotation.id, field: 'owner', value: owner }) }} aria-label={`${annotation.kind} owner`} /><button className="annotation-status" onClick={() => onSemanticCommand({ type: 'annotation.update', annotationId: annotation.id, field: 'status', value: nextStatus })}>{annotation.kind === 'approval' ? (annotation.status === 'approved' ? 'Approved' : 'Approve') : (annotation.status === 'resolved' ? 'Resolved' : 'Resolve')}</button><button className="annotation-remove" onClick={() => onSemanticCommand({ type: 'annotation.remove', annotationId: annotation.id })} title={`Remove ${annotation.kind}`}><Trash2 size={11} /></button></div>
 }
