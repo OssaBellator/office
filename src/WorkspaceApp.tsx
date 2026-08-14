@@ -10,7 +10,7 @@ import { makeGrowthEvidenceInsertion } from './semanticDocument'
 import { exportWorkspaceSession, importWorkspaceSession } from './workspaceIO'
 import { exportPlanCsv, exportPresentationMarkdown, exportRegionsCsv, exportStrategyMarkdown } from './compatibilityExports'
 import { planPlanCsvImport, planRegionsCsvImport } from './csvImportPlanner'
-import { planWorkspaceAutomation, type WorkspaceAutomationPlan } from './automationPlan'
+import { approveAutomation, executeGovernedAutomation, planGovernedAutomation, type GovernedAutomationPlan } from './governedAutomation'
 import { locateWorkspaceObject } from './workspaceNavigation'
 import { assessWorkspaceReadiness } from './workspaceDiagnostics'
 import { getDocumentReviewGate } from './reviewWorkflow'
@@ -89,7 +89,7 @@ export default function WorkspaceApp() {
   const [presentationGateOpen, setPresentationGateOpen] = useState(false)
   const [selectedObjectId, setSelectedObjectId] = useState<string | null>(null)
   const [transferMode, setTransferMode] = useState<WorkspaceTransferMode | null>(null)
-  const [pendingAutomation, setPendingAutomation] = useState<WorkspaceAutomationPlan | null>(null)
+  const [pendingAutomation, setPendingAutomation] = useState<GovernedAutomationPlan | null>(null)
   const workspace = session.present
   const commandPreview = pendingCommand ? previewVersionedCommand(workspace, pendingCommand) : null
   const readiness = assessWorkspaceReadiness(workspace)
@@ -177,7 +177,7 @@ export default function WorkspaceApp() {
         const text = await file.text()
         const commands = kind === 'regions' ? planRegionsCsvImport(workspace, text) : planPlanCsvImport(workspace, text)
         if (commands.length === 0) { setTransferMode(null); setWorkspaceNotice(`${file.name} already matches the workspace`); return }
-        setPendingAutomation(planWorkspaceAutomation(session, 'owner', commands))
+        setPendingAutomation(planGovernedAutomation(session, 'owner', commands))
         setTransferMode(null)
         setWorkspaceNotice(`Previewing ${commands.length} changes from ${file.name}`)
       } catch (error) {
@@ -188,9 +188,16 @@ export default function WorkspaceApp() {
   }
   const applyPendingAutomation = () => {
     if (!pendingAutomation) return
-    setSession(pendingAutomation.resultingSession)
-    setWorkspaceNotice(`Applied ${pendingAutomation.steps.length} imported change${pendingAutomation.steps.length === 1 ? '' : 's'}`)
-    setPendingAutomation(null)
+    try {
+      const approval = pendingAutomation.governance.requiresApproval ? approveAutomation(pendingAutomation, 'Workspace owner') : undefined
+      const next = executeGovernedAutomation(session, pendingAutomation, approval)
+      setSession(next)
+      setWorkspaceNotice(`Applied ${pendingAutomation.plan.steps.length} imported change${pendingAutomation.plan.steps.length === 1 ? '' : 's'}`)
+      setPendingAutomation(null)
+    } catch (error) {
+      setPendingAutomation(null)
+      setWorkspaceNotice(error instanceof Error ? error.message : 'Import plan could not be applied')
+    }
   }
 
   const openWorkspaceObject = (objectId: string) => {
@@ -269,7 +276,7 @@ export default function WorkspaceApp() {
       {presentationOpen && <PresentationPlayer workspace={workspace} onClose={() => setPresentationOpen(false)} />}
       {presentationGateOpen && <PresentationReadinessDialog readiness={readiness} reviewGate={reviewGate} onClose={() => setPresentationGateOpen(false)} onOpenContext={() => { setPresentationGateOpen(false); setContextOpen(true) }} onPresentAnyway={() => { setPresentationGateOpen(false); setPresentationOpen(true) }} />}
       {transferMode && <WorkspaceTransferDialog mode={transferMode} onClose={() => setTransferMode(null)} onExportBackup={exportBackup} onExportStrategy={exportStrategy} onExportBoard={exportBoard} onExportRegions={exportRegions} onExportPlan={exportPlan} onExportAll={exportPortableSet} onImportBackup={importBackup} onImportRegions={() => stageCsvImport('regions')} onImportPlan={() => stageCsvImport('plan')} />}
-      {pendingAutomation && <BatchPreviewModal plan={pendingAutomation} title="Import spreadsheet changes" onApply={applyPendingAutomation} onClose={() => setPendingAutomation(null)} />}
+      {pendingAutomation && <BatchPreviewModal plan={pendingAutomation.plan} governance={pendingAutomation.governance} title="Import spreadsheet changes" onApply={applyPendingAutomation} onClose={() => setPendingAutomation(null)} />}
     </div>
   )
 }
