@@ -1,10 +1,11 @@
 import { materializeChart } from './charts.ts'
 import { evaluateMetric, type WorkspaceState } from './model.ts'
 import { getPresentationState } from './presentationState.ts'
+import { inspectAllRelationships } from './relationshipDiagnostics.ts'
 import { getSemanticDocument, resolveSemanticClaim } from './semanticDocument.ts'
 
 export type DiagnosticSeverity = 'error' | 'warning' | 'info'
-export type DiagnosticArea = 'claims' | 'reviews' | 'sources' | 'data' | 'charts' | 'graph' | 'presentation'
+export type DiagnosticArea = 'claims' | 'reviews' | 'sources' | 'data' | 'relationships' | 'charts' | 'graph' | 'presentation'
 
 export type WorkspaceDiagnostic = {
   id: string
@@ -51,6 +52,10 @@ export function buildWorkspaceDiagnostics(workspace: WorkspaceState): WorkspaceD
     if (!metric.formula) continue
     try { evaluateMetric(workspace, metric.id) }
     catch (error) { diagnostics.push(diagnostic(`metric-invalid:${metric.id}`, 'error', 'data', error instanceof Error ? `${metric.label}: ${error.message}` : `${metric.label} formula is invalid.`, [`metric:${metric.id}`])) }
+  }
+
+  for (const report of inspectAllRelationships(workspace)) {
+    for (const issue of report.issues) diagnostics.push(diagnostic(`relationship:${report.relationship.id}:${issue.kind}:${issue.keys.join('|')}`, issue.severity, 'relationships', issue.message, [`relationship:${report.relationship.id}`]))
   }
 
   for (const chart of workspace.charts) {
