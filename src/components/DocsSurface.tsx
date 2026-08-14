@@ -104,7 +104,10 @@ function ParagraphBlock({ block, onSemanticCommand }: { block: Extract<SemanticD
   const style=block.style??'body'
   const label=style==='heading-1'?'Heading 1':style==='heading-2'?'Heading 2':style==='heading-3'?'Heading 3':style==='bullet'?'Bullet item':style==='numbered'?'Numbered item':'Paragraph'
   const rows=style.startsWith('heading-')?2:style==='bullet'||style==='numbered'?2:6
-  return <div className={`semantic-paragraph semantic-paragraph-${style}`}><span className="semantic-block-kind"><FileText size={12} /> {label}</span><div className="semantic-paragraph-editor">{style==='bullet'&&<span className="semantic-list-marker">•</span>}{style==='numbered'&&<span className="semantic-list-marker">1.</span>}<textarea value={text} onChange={(event) => setText(event.target.value)} onBlur={commit} rows={rows} aria-label={`Semantic ${label.toLowerCase()}`} /></div></div>
+  return <div className={`semantic-paragraph semantic-paragraph-${style}`}>
+    <div className="semantic-paragraph-meta"><span className="semantic-block-kind"><FileText size={12} /> {label}</span>{block.source&&<span className="semantic-import-source" title={`Imported from ${block.source}`}><Link2 size={10}/> Imported from {block.source}</span>}</div>
+    <div className="semantic-paragraph-editor">{style==='bullet'&&<span className="semantic-list-marker">•</span>}{style==='numbered'&&<span className="semantic-list-marker">1.</span>}<textarea value={text} onChange={(event) => setText(event.target.value)} onBlur={commit} rows={rows} aria-label={`Semantic ${label.toLowerCase()}`} /></div>
+  </div>
 }
 
 function ClaimBlock({ workspace, block, onSemanticCommand }: { workspace: WorkspaceState; block: Extract<SemanticDocumentBlock, { type: 'claim' }>; onSemanticCommand: (command: VersionedWorkspaceCommand) => void }) {
