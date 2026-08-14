@@ -3,7 +3,7 @@ import {
   Check, ChevronRight, Clock3, Database, FileText, Grid3X3, Link2, MoreHorizontal,
   Play, Plus, Presentation, Search, Sparkles, Table2,
 } from 'lucide-react'
-import { cloneSeedWorkspace, type RegionRow, type SourceRecord, type Surface, type WorkspaceState } from './model'
+import { cloneSeedWorkspace, type PlanRow, type RegionRow, type SourceRecord, type Surface, type WorkspaceState } from './model'
 import { previewVersionedCommand } from './semanticPreview'
 import { parsePaletteIntent } from './intent'
 import { exportWorkspaceSession, importWorkspaceSession } from './workspaceIO'
@@ -90,6 +90,7 @@ export default function WorkspaceApp() {
   const execute = (command: VersionedWorkspaceCommand) => setSession((current) => executeVersionedWorkspaceCommand(current, command))
   const commitDocument = (field: keyof WorkspaceState['document'], value: string) => execute({ type: 'document.update', field, value })
   const updateRegion = (id: string, field: keyof RegionRow, value: string | number) => execute({ type: 'region.update', regionId: id, field, value })
+  const updatePlan = (id: string, field: keyof PlanRow, value: string | number) => execute({ type: 'plan.update', planId: id, field, value })
   const updateMetricFormula = (metricId: string, formula: string) => execute({ type: 'metric.formula', metricId, formula })
   const updateSourceStatus = (sourceId: string, status: SourceRecord['status']) => execute({ type: 'source.status', sourceId, status })
 
@@ -176,7 +177,7 @@ export default function WorkspaceApp() {
         <div className={contextOpen ? 'workbench with-context' : 'workbench'}>
           <section className="canvas-area">
             {surface === 'docs' && <DocsSurface workspace={workspace} commitDocument={commitDocument} onOpenData={() => setSurface('data')} />}
-            {surface === 'data' && <DataSurface workspace={workspace} updateRegion={updateRegion} updateMetricFormula={updateMetricFormula} />}
+            {surface === 'data' && <DataSurface workspace={workspace} updateRegion={updateRegion} updatePlan={updatePlan} updateMetricFormula={updateMetricFormula} />}
             {surface === 'present' && <PresentSurface workspace={workspace} />}
           </section>
           {contextOpen && <ContextPanel workspace={workspace} surface={surface} transactions={session.past} onSetSourceStatus={updateSourceStatus} onClose={() => setContextOpen(false)} />}
