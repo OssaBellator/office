@@ -42,6 +42,10 @@ export async function planDocxImport(workspace: WorkspaceState, input: ArrayBuff
   const warnings:string[]=[]
   if(hasPath(entries,/^word\/media\//i))warnings.push('Embedded DOCX images are not imported yet; text structure is preserved.')
   if(hasPath(entries,/^word\/(?:charts|embeddings)\//i))warnings.push('Embedded DOCX charts or objects are not imported yet.')
+  if(hasPath(entries,/^word\/(?:footnotes|endnotes)\.xml$/i))warnings.push('Word footnotes and endnotes are not imported yet.')
+  if(hasPath(entries,/^word\/comments(?:Extended)?\.xml$/i))warnings.push('Word comments and comment threads are not imported yet.')
+  if(hasPath(entries,/^word\/(?:header|footer)\d*\.xml$/i))warnings.push('Word headers and footers are not imported into the document canvas yet.')
+  if(/<w:(?:ins|del)\b/i.test(documentXml))warnings.push('Tracked Word revisions are flattened to the visible imported text; revision markup is not preserved.')
   if(importedTables.length)warnings.push(`${importedTables.length} document table${importedTables.length===1?' was':'s were'} imported into Data using the first row as column headers.`)
   const importedItems=blocks.length+importedTables.reduce((count,table)=>count+Math.max(1,table.rows.length),0)
   return { kind:'docx', label:`${fileName} · ${blocks.length} document blocks · ${importedTables.length} data tables`, commands, warnings, importedItems }
@@ -65,18 +69,24 @@ export async function planPptxImport(workspace: WorkspaceState, input: ArrayBuff
   if (!paths.length) throw new Error('PPTX contains no slides')
   const importId = suffix(), fileSlug = slug(fileName)
   const source = `${fileName} · imported from PowerPoint / Google Slides export`
+  let flattenedTables=0,hasMotion=false
   const importedScenes: ImportedPresentationScene[] = paths.map((path,index) => {
     const xml = readOfficeXml(entries,path)!
+    if(/<p:(?:transition|timing)\b/i.test(xml))hasMotion=true
     const notePath=parseRelatedPartPath(path,readOfficeXml(entries,relsPath(path)),'notesSlide')
     const note = notePath ? readOfficeXml(entries,notePath) : null
     const slide = parsePptxSlideXml(xml,note)
+    flattenedTables+=slide.flattenedTables
     return { id:`imported:${fileSlug}-${importId}-${index+1}`, title:slide.title, body:slide.body, note:slide.note || undefined, source }
   })
   const state = getPresentationState(workspace)
   const next = { ...state, importedScenes:[...(state.importedScenes ?? []),...importedScenes], order:[...state.order,...importedScenes.map((scene)=>scene.id)] }
   const warnings:string[]=[]
+  warnings.push('PowerPoint/Google Slides theme, exact positioning, fonts, and master-layout geometry are semanticized rather than reproduced pixel-for-pixel.')
   if(hasPath(entries,/^ppt\/media\//i))warnings.push('Slide images and media are not imported yet; slide text and notes are preserved.')
   if(hasPath(entries,/^ppt\/(?:charts|diagrams)\//i))warnings.push('PowerPoint charts and SmartArt are not imported yet; their source slide remains represented as a semantic scene.')
+  if(flattenedTables)warnings.push(`${flattenedTables} PowerPoint table${flattenedTables===1?' was':'s were'} flattened into editable slide text rows; table layout is not preserved yet.`)
+  if(hasMotion)warnings.push('PowerPoint transitions and animations are not imported.')
   return { kind:'pptx', label:`${fileName} · ${importedScenes.length} slides`, commands:[{type:'presentation.replace',value:next}], warnings, importedItems:importedScenes.length }
 }
 
@@ -142,8 +152,8 @@ export async function planXlsxImport(workspace: WorkspaceState, input: ArrayBuff
   if(!workbook||!relationships)throw new Error('XLSX is missing workbook metadata')
   const shared=parseXlsxSharedStrings(readOfficeXml(entries,'xl/sharedStrings.xml'))
   const xmlByPath=new Map<string,string>()
-  let hasFormula=false
-  for(const path of entries.keys())if(/^xl\/worksheets\/[^/]+\.xml$/i.test(path)){const xml=readOfficeXml(entries,path);if(xml){xmlByPath.set(path,xml);if(/<f\b/i.test(xml))hasFormula=true}}
+  let hasFormula=false,hasMergedCells=false
+  for(const path of entries.keys())if(/^xl\/worksheets\/[^/]+\.xml$/i.test(path)){const xml=readOfficeXml(entries,path);if(xml){xmlByPath.set(path,xml);if(/<f\b/i.test(xml))hasFormula=true;if(/<mergeCell\b/i.test(xml))hasMergedCells=true}}
   const sheets=parseXlsxWorkbook(workbook,relationships,xmlByPath,shared)
   const commands:VersionedWorkspaceCommand[]=[],warnings:string[]=[]
   const genericTables:ImportedDataTable[]=[]
@@ -160,6 +170,10 @@ export async function planXlsxImport(workspace: WorkspaceState, input: ArrayBuff
   }
   if(genericTables.length)commands.push({type:'data.imported.replace',tables:[...getImportedTables(workspace),...genericTables]})
   if(hasFormula)warnings.push('Excel/Google Sheets formulas currently import through their cached values; Frame does not translate arbitrary spreadsheet formulas yet.')
+  if(hasPath(entries,/^xl\/styles\.xml$/i))warnings.push('Excel cell formatting and date/number display formats are not translated yet; Frame imports stored cell values and inferred column types.')
+  if(hasMergedCells)warnings.push('Merged Excel cells are flattened to their stored cell values; merge geometry is not preserved.')
+  if(hasPath(entries,/^xl\/comments(?:\d+)?\.xml$/i))warnings.push('Excel cell comments and notes are not imported yet.')
+  if(hasPath(entries,/^xl\/(?:externalLinks|connections)\//i)||hasPath(entries,/^xl\/connections\.xml$/i))warnings.push('External workbook links and data connections are not imported or refreshed.')
   if(genericTables.length)warnings.push(`${genericTables.length} worksheet${genericTables.length===1?'':'s'} ${genericTables.length===1?'was':'were'} retained as generic Frame Data to preserve foreign columns or schemas.`)
   if(!matched&&!genericTables.length)throw new Error('Workbook contains no non-empty worksheets that Frame can import.')
   return {kind:'xlsx',label:`${fileName} · ${sheets.length} sheets`,commands,warnings,importedItems}
