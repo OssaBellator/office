@@ -36,7 +36,14 @@ function parseImportedTable(value:unknown):ImportedDataTable{
   const columns=array(input.columns,'table.columns').map((item,index)=>{const column=record(item);return{id:text(column.id,`table.columns[${index}].id`),label:text(column.label,`table.columns[${index}].label`),type:oneOf(column.type,`table.columns[${index}].type`,['text','number'] as const)}})
   const columnIds=new Set(columns.map((column)=>column.id))
   const rows=array(input.rows,'table.rows').map((item,rowIndex)=>{const row=record(item),values=record(row.values);for(const key of Object.keys(values))if(!columnIds.has(key))throw new Error(`table.rows[${rowIndex}].values contains unknown column ${key}`);return{id:text(row.id,`table.rows[${rowIndex}].id`),values:Object.fromEntries(columns.map((column)=>[column.id,importedCell(values[column.id]??null,`table.rows[${rowIndex}].values.${column.id}`)]))}})
-  return{id:text(input.id,'table.id'),label:text(input.label,'table.label'),source:text(input.source,'table.source'),columns,rows,importedAt:text(input.importedAt,'table.importedAt')}
+  let formulaByCell:Record<string,string>|undefined
+  if(input.formulaByCell!==undefined){
+    const raw=record(input.formulaByCell),validKeys=new Set(rows.flatMap((row)=>columns.map((column)=>`${row.id}\u0000${column.id}`)))
+    formulaByCell={}
+    for(const [key,value] of Object.entries(raw)){if(!validKeys.has(key))throw new Error(`table.formulaByCell contains unknown cell ${key}`);formulaByCell[key]=text(value,`table.formulaByCell.${key}`)}
+    if(!Object.keys(formulaByCell).length)formulaByCell=undefined
+  }
+  return{id:text(input.id,'table.id'),label:text(input.label,'table.label'),source:text(input.source,'table.source'),columns,rows,importedAt:text(input.importedAt,'table.importedAt'),...(formulaByCell?{formulaByCell}:{})}
 }
 function parseBlock(value: unknown): SemanticDocumentBlock {
   const input = record(value), id=text(input.id,'block.id'), type=oneOf(input.type,'block.type',['paragraph','claim','metric-embed','decision-embed'] as const)
