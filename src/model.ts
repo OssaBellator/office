@@ -12,6 +12,7 @@ export type Metric = {
   format: 'currency' | 'percent' | 'number'
   source: string
   updatedAt: string
+  formula?: string
 }
 
 export type RegionRow = {
@@ -147,6 +148,7 @@ export const seedWorkspace: WorkspaceState = {
       format: 'currency',
       source: 'Finance model · Revenue · Q2 FY27',
       updatedAt: '12 min ago',
+      formula: 'SUM(Regions.Revenue)',
     },
     {
       id: 'growth',
@@ -215,8 +217,6 @@ export const regionsSchema: TableSchema = {
   ],
 }
 
-export const revenueFormula = 'SUM(Regions.Revenue)'
-
 export function regionsTable(workspace: WorkspaceState): TableData {
   return {
     schema: regionsSchema,
@@ -231,6 +231,13 @@ export function regionsTable(workspace: WorkspaceState): TableData {
 
 export function evaluateWorkspaceFormula(workspace: WorkspaceState, expression: string) {
   return evaluateSemanticFormula(expression, [regionsTable(workspace)])
+}
+
+export function evaluateMetric(workspace: WorkspaceState, metricId: string) {
+  const metric = workspace.metrics.find((candidate) => candidate.id === metricId)
+  if (!metric) throw new Error(`Unknown metric: ${metricId}`)
+  if (!metric.formula) return { value: metric.value, dependencies: [] }
+  return evaluateWorkspaceFormula(workspace, metric.formula)
 }
 
 export function formatMetric(metric: Metric) {
@@ -337,7 +344,7 @@ export function updateRegionField(
   const changedObjectIds = [`region:${id}`]
 
   if (field === 'revenue') {
-    const totalRevenue = Number(evaluateWorkspaceFormula({ ...workspace, regions }, revenueFormula).value.toFixed(1))
+    const totalRevenue = Number(evaluateMetric({ ...workspace, regions }, 'revenue').value.toFixed(1))
     metrics = workspace.metrics.map((metric) =>
       metric.id === 'revenue' ? { ...metric, value: totalRevenue, updatedAt: changedAt } : metric,
     )
