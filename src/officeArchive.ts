@@ -8,7 +8,9 @@ function asBytes(input: ArrayBuffer | Uint8Array) {
 
 async function inflateRaw(input: Uint8Array) {
   if (typeof DecompressionStream === 'undefined') throw new Error('This browser cannot decompress Office files yet')
-  const stream = new Blob([input]).stream().pipeThrough(new DecompressionStream('deflate-raw'))
+  const copy = new Uint8Array(input.byteLength)
+  copy.set(input)
+  const stream = new Blob([copy.buffer]).stream().pipeThrough(new DecompressionStream('deflate-raw'))
   return new Uint8Array(await new Response(stream).arrayBuffer())
 }
 
