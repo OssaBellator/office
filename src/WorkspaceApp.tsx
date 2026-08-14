@@ -6,6 +6,7 @@ import {
 import { cloneSeedWorkspace, type PlanRow, type RegionRow, type SourceRecord, type Surface, type WorkspaceState } from './model'
 import { previewVersionedCommand } from './semanticPreview'
 import { parsePaletteIntent } from './intent'
+import { makeGrowthEvidenceInsertion } from './semanticDocument'
 import { exportWorkspaceSession, importWorkspaceSession } from './workspaceIO'
 import {
   createVersionedWorkspaceSession,
@@ -95,7 +96,10 @@ export default function WorkspaceApp() {
   const updateSourceStatus = (sourceId: string, status: SourceRecord['status']) => execute({ type: 'source.status', sourceId, status })
 
   const stageApproval = () => setPendingCommand({ type: 'decision.status', decisionId: 'launch', status: 'approved' })
-  const stageEvidence = () => setPendingCommand({ type: 'document.append', text: 'Evidence to validate: APAC growth is currently 31%, the strongest regional rate in the model.' })
+  const stageEvidence = () => {
+    const insertion = makeGrowthEvidenceInsertion(workspace)
+    setPendingCommand({ type: 'document.block.insert', ...insertion })
+  }
   const applyPendingCommand = () => { if (!pendingCommand) return; execute(pendingCommand); setPendingCommand(null); setCommandOpen(false) }
   const closeCommandPalette = () => { setPendingCommand(null); setCommandOpen(false) }
   const openCommandPalette = () => { setPendingCommand(null); setCommandOpen(true) }
@@ -176,7 +180,7 @@ export default function WorkspaceApp() {
 
         <div className={contextOpen ? 'workbench with-context' : 'workbench'}>
           <section className="canvas-area">
-            {surface === 'docs' && <DocsSurface workspace={workspace} commitDocument={commitDocument} onOpenData={() => setSurface('data')} />}
+            {surface === 'docs' && <DocsSurface workspace={workspace} commitDocument={commitDocument} onSemanticCommand={execute} onOpenData={() => setSurface('data')} />}
             {surface === 'data' && <DataSurface workspace={workspace} updateRegion={updateRegion} updatePlan={updatePlan} updateMetricFormula={updateMetricFormula} />}
             {surface === 'present' && <PresentSurface workspace={workspace} />}
           </section>
