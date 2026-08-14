@@ -1,4 +1,5 @@
 import { deriveGrowthLeaderClaim } from './knowledge.ts'
+import { makeGrowthEvidenceInsertion } from './semanticDocument.ts'
 import { validateMetricFormula, type VersionedWorkspaceCommand } from './semanticCommands.ts'
 import type { Surface, WorkspaceState } from './model.ts'
 
@@ -12,6 +13,7 @@ export type PaletteIntent =
   | { kind: 'unknown'; message: string }
 
 function normalize(value: string) { return value.trim().toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim() }
+function semanticId(prefix: string) { return `${prefix}:${globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`}` }
 
 function findRegion(workspace: WorkspaceState, input: string) {
   const wanted = normalize(input)
@@ -42,9 +44,22 @@ export function parsePaletteIntent(input: string, workspace: WorkspaceState): Pa
     return { kind: 'command', label: 'Mark APAC expansion decision pending', command: { type: 'decision.status', decisionId: 'launch', status: 'pending' } }
   }
 
-  if (/^(add|append|insert) evidence(?: to (?:the )?strategy)?$/i.test(query)) {
-    const claim = deriveGrowthLeaderClaim(workspace)
-    return { kind: 'command', label: 'Append live evidence to strategy', command: { type: 'document.append', text: `Evidence: ${claim.statement} ${claim.rationale}` } }
+  if (/^(?:\/claim|\/evidence|add|append|insert) evidence(?: to (?:the )?strategy)?$/i.test(query) || /^\/claim$/i.test(query)) {
+    const insertion = makeGrowthEvidenceInsertion(workspace)
+    return { kind: 'command', label: 'Insert grounded evidence claim', command: { type: 'document.block.insert', ...insertion } }
+  }
+
+  const slashParagraph = query.match(/^\/paragraph(?:\s+(.+))?$/i)
+  if (slashParagraph) {
+    return { kind: 'command', label: 'Insert paragraph block', command: { type: 'document.block.insert', block: { id: semanticId('block'), type: 'paragraph', text: slashParagraph[1]?.trim() || 'New paragraph' } } }
+  }
+  if (/^\/(?:metrics|metric|snapshot)$/i.test(query)) {
+    return { kind: 'command', label: 'Insert live metric block', command: { type: 'document.block.insert', block: { id: semanticId('block'), type: 'metric-embed', label: 'Live metrics', metricIds: workspace.metrics.map((metric) => metric.id) } } }
+  }
+  if (/^\/decision$/i.test(query)) {
+    const decision = workspace.decisions[0]
+    if (!decision) return { kind: 'error', message: 'No shared decision exists in this workspace.' }
+    return { kind: 'command', label: 'Insert decision block', command: { type: 'document.block.insert', block: { id: semanticId('block'), type: 'decision-embed', decisionId: decision.id } } }
   }
 
   const titleMatch = query.match(/^(?:set|change|update)\s+(?:strategy\s+|document\s+)?title\s+(?:to\s+)?(.+)$/i)
@@ -83,5 +98,6 @@ export function parsePaletteIntent(input: string, workspace: WorkspaceState): Pa
     }
   }
 
-  return { kind: 'unknown', message: 'I can edit actuals, plan values, formulas, source freshness, strategy text, decisions, navigate views, and open history.' }
+  const leader = deriveGrowthLeaderClaim(workspace)
+  return { kind: 'unknown', message: `I can insert /paragraph, /claim, /metrics and /decision blocks; edit actuals, plan values and formulas; manage source freshness and decisions; or navigate views. Current evidence leader: ${leader.statement}` }
 }
