@@ -3,7 +3,7 @@ import {
   Check, ChevronRight, Clock3, Database, FileText, Grid3X3, Link2, MoreHorizontal,
   Play, Plus, Presentation, Search, Sparkles, Table2,
 } from 'lucide-react'
-import { cloneSeedWorkspace, type PlanRow, type RegionRow, type SourceRecord, type Surface, type WorkspaceState } from './model'
+import { cloneSeedWorkspace, getDownstreamObjectIds, type PlanRow, type RegionRow, type SourceRecord, type Surface, type WorkspaceState } from './model'
 import { previewVersionedCommand } from './semanticPreview'
 import { parsePaletteIntent } from './intent'
 import { makeGrowthEvidenceInsertion } from './semanticDocument'
@@ -99,6 +99,23 @@ export default function WorkspaceApp() {
     localStorage.setItem(SESSION_STORAGE_KEY, serializeWorkspaceSession(session))
     localStorage.setItem(LEGACY_WORKSPACE_STORAGE_KEY, JSON.stringify(workspace))
   }, [session, workspace])
+
+  useEffect(() => {
+    if (!selectedObjectId) return
+    const timer = window.setTimeout(() => {
+      document.querySelectorAll('.frame-object-focused').forEach((element) => element.classList.remove('frame-object-focused'))
+      const candidates = [selectedObjectId, ...getDownstreamObjectIds(workspace.graph, [selectedObjectId])]
+      const target = candidates.flatMap((id) => {
+        const escaped = globalThis.CSS?.escape ? CSS.escape(id) : id.replace(/["\\]/g, '\\$&')
+        const element = document.querySelector(`[data-frame-object="${escaped}"]`)
+        return element instanceof HTMLElement ? [element] : []
+      })[0]
+      if (!target) return
+      target.classList.add('frame-object-focused')
+      target.scrollIntoView({ behavior:'smooth', block:'center', inline:'nearest' })
+    }, 80)
+    return () => window.clearTimeout(timer)
+  }, [selectedObjectId, surface, workspace])
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -239,7 +256,7 @@ export default function WorkspaceApp() {
         <div className="workspace-label">Workspace</div>
         <button className="workspace-switcher"><div className="workspace-avatar">FY</div><div><strong>{workspace.title}</strong><span>Product & strategy</span></div><ChevronRight size={15} /></button>
         <nav className="surface-nav" aria-label="Workspace views">{navItems.map((item) => { const Icon = item.icon; return <button key={item.id} className={surface === item.id ? 'nav-item active' : 'nav-item'} onClick={() => setSurface(item.id)}><Icon size={16} /><span>{item.label}</span><small>{item.meta}</small></button> })}</nav>
-        <div className="sidebar-section"><div className="sidebar-section-title">Sources <Plus size={14} /></div>{workspace.sources.map((source) => <button className="source-row" key={source.id} onClick={() => openWorkspaceObject(source.id)}>{source.type === 'dataset' ? <Database size={14} /> : <Link2 size={14} />} {source.label}</button>)}</div>
+        <div className="sidebar-section"><div className="sidebar-section-title">Sources <Plus size={14} /></div>{workspace.sources.map((source) => <button className="source-row" data-frame-object={source.id} key={source.id} onClick={() => openWorkspaceObject(source.id)}>{source.type === 'dataset' ? <Database size={14} /> : <Link2 size={14} />} {source.label}</button>)}</div>
         <div className="sidebar-footer"><div className="avatar">OB</div><div><strong>Ossa</strong><span>Workspace owner</span></div><MoreHorizontal size={16} /></div>
       </aside>
 
@@ -263,8 +280,8 @@ export default function WorkspaceApp() {
         <div className={contextOpen ? 'workbench with-context' : 'workbench'}>
           <section className="canvas-area">
             {surface === 'docs' && <DocsSurface workspace={workspace} commitDocument={commitDocument} onSemanticCommand={execute} onOpenData={() => setSurface('data')} />}
-            {surface === 'data' && <DataSurface workspace={workspace} updateRegion={updateRegion} updatePlan={updatePlan} updateMetricFormula={updateMetricFormula} updateChartKind={(chartId, kind) => execute({ type: 'chart.kind', chartId, kind })} />}
-            {surface === 'present' && <PresentSurface workspace={workspace} onPresentationCommand={execute} />}
+            {surface === 'data' && <DataSurface workspace={workspace} focusedObjectId={selectedObjectId} updateRegion={updateRegion} updatePlan={updatePlan} updateMetricFormula={updateMetricFormula} updateChartKind={(chartId, kind) => execute({ type: 'chart.kind', chartId, kind })} />}
+            {surface === 'present' && <PresentSurface workspace={workspace} focusedObjectId={selectedObjectId} onPresentationCommand={execute} />}
           </section>
           {contextOpen && <ContextPanel workspace={workspace} surface={surface} transactions={session.past} selectedObjectId={selectedObjectId} onSemanticCommand={execute} onSetSourceStatus={updateSourceStatus} onClose={() => setContextOpen(false)} />}
         </div>
