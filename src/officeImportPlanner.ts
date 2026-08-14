@@ -1,5 +1,6 @@
 import { readOfficeXml, readOfficeZip } from './officeArchive.ts'
 import { parseDocxDocumentXml, parsePptxSlideOrder, parsePptxSlideXml, parseRelatedPartPath, parseXlsxSharedStrings, parseXlsxWorkbook, type ImportedSheet } from './officeParsers.ts'
+import { getImportedTables, importedTableFromSheet } from './importedTables.ts'
 import { getSemanticDocument, type SemanticParagraphStyle } from './semanticDocument.ts'
 import { getPresentationState, type ImportedPresentationScene } from './presentationState.ts'
 import type { WorkspaceState } from './model.ts'
@@ -137,11 +138,20 @@ export async function planXlsxImport(workspace: WorkspaceState, input: ArrayBuff
   for(const path of entries.keys())if(/^xl\/worksheets\/[^/]+\.xml$/i.test(path)){const xml=readOfficeXml(entries,path);if(xml){xmlByPath.set(path,xml);if(/<f\b/i.test(xml))hasFormula=true}}
   const sheets=parseXlsxWorkbook(workbook,relationships,xmlByPath,shared)
   const commands:VersionedWorkspaceCommand[]=[],warnings:string[]=[]
-  let matched=0
-  for(const sheet of sheets){matched+=planActualSheet(workspace,sheet,commands,warnings);matched+=planPlanSheet(workspace,sheet,commands,warnings)}
+  const genericTables=[]
+  let matched=0,importedItems=0
+  const importSuffix=suffix()
+  for(const [index,sheet] of sheets.entries()){
+    const sheetMatched=planActualSheet(workspace,sheet,commands,warnings)+planPlanSheet(workspace,sheet,commands,warnings)
+    if(sheetMatched){matched+=sheetMatched;importedItems+=sheetMatched;continue}
+    const table=importedTableFromSheet(sheet,fileName,`${importSuffix}-${index+1}`)
+    if(table){genericTables.push(table);importedItems+=table.rows.length||1}
+  }
+  if(genericTables.length)commands.push({type:'data.imported.replace',tables:[...getImportedTables(workspace),...genericTables]})
   if(hasFormula)warnings.push('Excel/Google Sheets formulas currently import through their cached values; Frame does not translate arbitrary spreadsheet formulas yet.')
-  if(!matched)throw new Error('No compatible worksheet found. Frame currently recognises Region/Revenue/Growth/Margin actuals and Region/Revenue plan sheets.')
-  return {kind:'xlsx',label:`${fileName} · ${sheets.length} sheets`,commands,warnings,importedItems:matched}
+  if(genericTables.length)warnings.push(`${genericTables.length} worksheet${genericTables.length===1?'':'s'} did not match the finance schema and will be retained as generic Frame Data tables.`)
+  if(!matched&&!genericTables.length)throw new Error('Workbook contains no non-empty worksheets that Frame can import.')
+  return {kind:'xlsx',label:`${fileName} · ${sheets.length} sheets`,commands,warnings,importedItems}
 }
 
 export async function planOfficeImport(workspace: WorkspaceState, input: ArrayBuffer | Uint8Array, fileName: string): Promise<OfficeImportPlan> {
