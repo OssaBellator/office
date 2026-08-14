@@ -95,6 +95,25 @@ export type WorkspaceMutationResult = {
   event: ChangeEvent
 }
 
+export type WorkspaceCommand =
+  | { type: 'region.update'; regionId: string; field: keyof RegionRow; value: string | number; changedAt?: string }
+  | { type: 'decision.status'; decisionId: string; status: Decision['status']; changedAt?: string }
+  | { type: 'document.append'; text: string; changedAt?: string }
+
+export type WorkspaceTransaction = {
+  id: string
+  command: WorkspaceCommand
+  summary: string
+  before: WorkspaceState
+  after: WorkspaceState
+}
+
+export type WorkspaceSession = {
+  present: WorkspaceState
+  past: WorkspaceTransaction[]
+  future: WorkspaceTransaction[]
+}
+
 function buildSeedGraph(): WorkspaceGraph {
   const objects: WorkspaceObject[] = [
     { id: 'document:strategy', kind: 'document', label: 'Strategy document', surfaces: ['docs'] },
@@ -281,6 +300,49 @@ export function hydrateWorkspace(value: Partial<WorkspaceState> | null | undefin
   }
 }
 
+export function getUpstreamObjectIds(graph: WorkspaceGraph, objectIds: string[]): string[] {
+  const targets = new Set(objectIds)
+  const visited = new Set(objectIds)
+  const queue = [...objectIds]
+  const upstream: string[] = []
+
+  while (queue.length > 0) {
+    const current = queue.shift()!
+    for (const edge of graph.edges) {
+      if (edge.to !== current || visited.has(edge.from)) continue
+      visited.add(edge.from)
+      queue.push(edge.from)
+      if (!targets.has(edge.from)) upstream.push(edge.from)
+    }
+  }
+
+  return upstream
+}
+
+export type ObjectLineage = {
+  object: WorkspaceObject
+  upstream: WorkspaceObject[]
+  downstream: WorkspaceObject[]
+  incoming: DependencyEdge[]
+  outgoing: DependencyEdge[]
+}
+
+export function getObjectLineage(workspace: WorkspaceState, objectId: string): ObjectLineage {
+  const object = workspace.graph.objects.find((candidate) => candidate.id === objectId)
+  if (!object) throw new Error(`Unknown workspace object: ${objectId}`)
+
+  const upstreamIds = getUpstreamObjectIds(workspace.graph, [objectId])
+  const downstreamIds = getDownstreamObjectIds(workspace.graph, [objectId])
+
+  return {
+    object,
+    upstream: upstreamIds.flatMap((id) => workspace.graph.objects.find((candidate) => candidate.id === id) ?? []),
+    downstream: downstreamIds.flatMap((id) => workspace.graph.objects.find((candidate) => candidate.id === id) ?? []),
+    incoming: workspace.graph.edges.filter((edge) => edge.to === objectId),
+    outgoing: workspace.graph.edges.filter((edge) => edge.from === objectId),
+  }
+}
+
 export function getDownstreamObjectIds(graph: WorkspaceGraph, changedObjectIds: string[]): string[] {
   const changed = new Set(changedObjectIds)
   const visited = new Set(changedObjectIds)
@@ -395,5 +457,101 @@ export function setDecisionStatus(
     workspace: withHistory,
     impacts: getWorkspaceImpacts(withHistory, changedObjectIds),
     event,
+  }
+}
+
+export function appendDocumentText(
+  workspace: WorkspaceState,
+  text: string,
+  changedAt = 'just now',
+): WorkspaceMutationResult {
+  const body = workspace.document.body.trimEnd()
+  const document = {
+    ...workspace.document,
+    body: body ? `${body}\n\n${text}` : text,
+  }
+  const changedObjectIds = ['document:strategy']
+  const next = { ...workspace, document }
+  const event = makeEvent(next, 'Strategy evidence appended', changedAt, changedObjectIds)
+  const withHistory = appendHistory(next, event)
+
+  return {
+    workspace: withHistory,
+    impacts: getWorkspaceImpacts(withHistory, changedObjectIds),
+    event,
+  }
+}
+
+export function createWorkspaceSession(workspace: WorkspaceState): WorkspaceSession {
+  return {
+    present: workspace,
+    past: [],
+    future: [],
+  }
+}
+
+export function executeWorkspaceCommand(
+  session: WorkspaceSession,
+  command: WorkspaceCommand,
+): WorkspaceSession {
+  let result: WorkspaceMutationResult
+
+  switch (command.type) {
+    case 'region.update':
+      result = updateRegionField(
+        session.present,
+        command.regionId,
+        command.field,
+        command.value,
+        command.changedAt,
+      )
+      break
+    case 'decision.status':
+      result = setDecisionStatus(
+        session.present,
+        command.decisionId,
+        command.status,
+        command.changedAt,
+      )
+      break
+    case 'document.append':
+      result = appendDocumentText(session.present, command.text, command.changedAt)
+      break
+  }
+
+  const transaction: WorkspaceTransaction = {
+    id: `transaction:${session.past.length + 1}`,
+    command,
+    summary: result.event.summary,
+    before: structuredClone(session.present),
+    after: structuredClone(result.workspace),
+  }
+
+  return {
+    present: result.workspace,
+    past: [...session.past, transaction].slice(-50),
+    future: [],
+  }
+}
+
+export function undoWorkspaceSession(session: WorkspaceSession): WorkspaceSession {
+  const transaction = session.past.at(-1)
+  if (!transaction) return session
+
+  return {
+    present: structuredClone(transaction.before),
+    past: session.past.slice(0, -1),
+    future: [transaction, ...session.future].slice(0, 50),
+  }
+}
+
+export function redoWorkspaceSession(session: WorkspaceSession): WorkspaceSession {
+  const transaction = session.future[0]
+  if (!transaction) return session
+
+  return {
+    present: structuredClone(transaction.after),
+    past: [...session.past, transaction].slice(-50),
+    future: session.future.slice(1),
   }
 }
