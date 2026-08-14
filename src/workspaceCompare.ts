@@ -20,6 +20,10 @@ export function compareWorkspaceStates(before: WorkspaceState, after: WorkspaceS
     const l=before.regions.find((x)=>x.id===id),r=after.regions.find((x)=>x.id===id); if(!l||!r){add(diffs,after,`region:${id}`,'object',l?JSON.stringify(l):null,r?JSON.stringify(r):null);continue}
     for(const field of ['region','revenue','growth','margin'] as const)add(diffs,after,`region:${id}`,field,l[field],r[field])
   }
+  for (const id of new Set([...before.plans.map((x)=>x.id),...after.plans.map((x)=>x.id)])) {
+    const l=before.plans.find((x)=>x.id===id),r=after.plans.find((x)=>x.id===id); if(!l||!r){add(diffs,after,`plan:${id}`,'object',l?JSON.stringify(l):null,r?JSON.stringify(r):null);continue}
+    for(const field of ['region','revenue'] as const)add(diffs,after,`plan:${id}`,field,l[field],r[field])
+  }
   for (const id of new Set([...before.decisions.map((x)=>x.id),...after.decisions.map((x)=>x.id)])) {
     const l=before.decisions.find((x)=>x.id===id),r=after.decisions.find((x)=>x.id===id); if(!l||!r){add(diffs,after,`decision:${id}`,'object',l?JSON.stringify(l):null,r?JSON.stringify(r):null);continue}
     for(const field of ['title','status','owner','rationale'] as const)add(diffs,after,`decision:${id}`,field,l[field],r[field])
