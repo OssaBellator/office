@@ -1,4 +1,5 @@
 import { deriveGrowthLeaderClaim } from './knowledge.ts'
+import { getPresentationState, type PresentationSceneId } from './presentationState.ts'
 import { makeGrowthEvidenceInsertion } from './semanticDocument.ts'
 import { validateMetricFormula, type VersionedWorkspaceCommand } from './semanticCommands.ts'
 import type { Surface, WorkspaceState } from './model.ts'
@@ -14,6 +15,14 @@ export type PaletteIntent =
 
 function normalize(value: string) { return value.trim().toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim() }
 function semanticId(prefix: string) { return `${prefix}:${globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`}` }
+function sceneId(value: string): PresentationSceneId | null {
+  const normalized = normalize(value)
+  if (normalized === 'thesis' || normalized === 'opening' || normalized === 'intro') return 'thesis'
+  if (normalized === 'performance' || normalized === 'revenue') return 'performance'
+  if (normalized === 'signal' || normalized === 'growth') return 'signal'
+  if (normalized === 'decision' || normalized === 'approval') return 'decision'
+  return null
+}
 
 function findRegion(workspace: WorkspaceState, input: string) {
   const wanted = normalize(input)
@@ -62,6 +71,25 @@ export function parsePaletteIntent(input: string, workspace: WorkspaceState): Pa
     return { kind: 'command', label: 'Insert decision block', command: { type: 'document.block.insert', block: { id: semanticId('block'), type: 'decision-embed', decisionId: decision.id } } }
   }
 
+  const visibilityMatch = query.match(/^(hide|show)\s+(?:the\s+)?(thesis|opening|intro|performance|revenue|signal|growth|decision|approval)\s+scene$/i)
+  if (visibilityMatch) {
+    const id = sceneId(visibilityMatch[2])!
+    const visible = visibilityMatch[1].toLowerCase() === 'show'
+    return { kind: 'command', label: `${visible ? 'Show' : 'Hide'} ${id} scene`, command: { type: 'presentation.scene.visibility', sceneId: id, visible } }
+  }
+  const moveSceneMatch = query.match(/^move\s+(?:the\s+)?(thesis|opening|intro|performance|revenue|signal|growth|decision|approval)\s+scene\s+(first|last)$/i)
+  if (moveSceneMatch) {
+    const id = sceneId(moveSceneMatch[1])!
+    const state = getPresentationState(workspace)
+    const toIndex = moveSceneMatch[2].toLowerCase() === 'first' ? 0 : state.order.length - 1
+    return { kind: 'command', label: `Move ${id} scene ${moveSceneMatch[2].toLowerCase()}`, command: { type: 'presentation.scene.move', sceneId: id, toIndex } }
+  }
+  const noteMatch = query.match(/^(?:set|update|change)\s+(?:the\s+)?(thesis|opening|intro|performance|revenue|signal|growth|decision|approval)\s+(?:scene\s+)?(?:speaker\s+)?note\s+(?:to\s+)?(.+)$/i)
+  if (noteMatch) {
+    const id = sceneId(noteMatch[1])!
+    return { kind: 'command', label: `Update ${id} speaker note`, command: { type: 'presentation.note.update', sceneId: id, note: noteMatch[2].trim() } }
+  }
+
   const titleMatch = query.match(/^(?:set|change|update)\s+(?:strategy\s+|document\s+)?title\s+(?:to\s+)?(.+)$/i)
   if (titleMatch) return { kind: 'command', label: 'Update strategy title', command: { type: 'document.update', field: 'title', value: titleMatch[1].trim() } }
 
@@ -108,5 +136,5 @@ export function parsePaletteIntent(input: string, workspace: WorkspaceState): Pa
   }
 
   const leader = deriveGrowthLeaderClaim(workspace)
-  return { kind: 'unknown', message: `I can insert /paragraph, /claim, /metrics and /decision blocks; edit actuals, plan values, formulas and the shared chart; manage source freshness and decisions; or navigate views. Current evidence leader: ${leader.statement}` }
+  return { kind: 'unknown', message: `I can insert semantic document blocks; edit actuals, plan values, formulas and the shared chart; reorder/hide scenes and edit speaker notes; manage source freshness and decisions; or navigate views. Current evidence leader: ${leader.statement}` }
 }
