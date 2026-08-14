@@ -15,6 +15,7 @@ import './presentation-authoring.css'
 import './formula-catalog.css'
 import './workspace-tools.css'
 import './governance-ui.css'
+import './attainment.css'
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
