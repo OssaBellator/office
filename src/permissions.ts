@@ -14,6 +14,7 @@ export function getCommandCapability(command: VersionedWorkspaceCommand): Comman
   switch (command.type) {
     case 'region.update':
     case 'plan.update':
+    case 'data.imported.replace':
     case 'metric.create':
     case 'metric.remove':
     case 'metric.formula':
