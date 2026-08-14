@@ -33,6 +33,7 @@ import { ContextPanel } from './components/ContextPanel'
 import { DataSurface } from './components/DataSurface'
 import { DocsSurface } from './components/DocsSurface'
 import { HistoryBrowser } from './components/HistoryBrowser'
+import { ImportedTablesPanel } from './components/ImportedTablesPanel'
 import { PresentSurface } from './components/PresentSurface'
 import { PresentationPlayer } from './components/PresentationPlayer'
 import { PresentationReadinessDialog } from './components/PresentationReadinessDialog'
@@ -303,7 +304,7 @@ export default function WorkspaceApp() {
         <div className={contextOpen ? 'workbench with-context' : 'workbench'}>
           <section className="canvas-area">
             {surface === 'docs' && <DocsSurface workspace={workspace} commitDocument={commitDocument} onSemanticCommand={execute} onOpenData={() => setSurface('data')} />}
-            {surface === 'data' && <DataSurface workspace={workspace} focusedObjectId={selectedObjectId} updateRegion={updateRegion} updatePlan={updatePlan} updateMetricFormula={updateMetricFormula} updateChartKind={(chartId, kind) => execute({ type: 'chart.kind', chartId, kind })} onSemanticCommand={execute} />}
+            {surface === 'data' && <><DataSurface workspace={workspace} focusedObjectId={selectedObjectId} updateRegion={updateRegion} updatePlan={updatePlan} updateMetricFormula={updateMetricFormula} updateChartKind={(chartId, kind) => execute({ type: 'chart.kind', chartId, kind })} onSemanticCommand={execute} /><ImportedTablesPanel workspace={workspace} focusedObjectId={selectedObjectId} onSemanticCommand={execute} /></>}
             {surface === 'present' && <PresentSurface workspace={workspace} focusedObjectId={selectedObjectId} onPresentationCommand={execute} />}
           </section>
           {contextOpen && <ContextPanel workspace={workspace} surface={surface} transactions={session.past} selectedObjectId={selectedObjectId} onSemanticCommand={execute} onSetSourceStatus={updateSourceStatus} onClose={() => setContextOpen(false)} />}
