@@ -1,4 +1,5 @@
 import { workspaceTables, type TableRelationship, type WorkspaceState } from './model.ts'
+import type { TableRow } from './formulas.ts'
 
 export type RelationshipIssueKind = 'missing-table' | 'missing-field' | 'duplicate-from-key' | 'duplicate-to-key' | 'unmatched-from-key' | 'unmatched-to-key'
 export type RelationshipIssue = {
@@ -14,7 +15,7 @@ export type RelationshipIntegrityReport = {
   issues: RelationshipIssue[]
 }
 
-function values(rows: Record<string, string | number>[], fieldId: string) {
+function values(rows: TableRow[], fieldId: string) {
   return rows.map((row) => String(row[fieldId] ?? ''))
 }
 function duplicates(items: string[]) {
