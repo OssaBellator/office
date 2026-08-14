@@ -1,3 +1,4 @@
+import { getImportedTables } from './importedTables.ts'
 import { getPresentationState } from './presentationState.ts'
 import { getSemanticDocument } from './semanticDocument.ts'
 import type { Surface, WorkspaceState } from './model.ts'
@@ -12,7 +13,7 @@ export type WorkspaceObjectLocation = {
 
 function preferredSurface(surfaces: Surface[], objectId: string): Surface {
   if (objectId.startsWith('scene:')) return 'present'
-  if (objectId.startsWith('region:') || objectId.startsWith('plan:') || objectId.startsWith('metric:') || objectId.startsWith('chart:') || objectId.startsWith('relationship:')) return 'data'
+  if (objectId.startsWith('region:') || objectId.startsWith('plan:') || objectId.startsWith('metric:') || objectId.startsWith('chart:') || objectId.startsWith('relationship:') || objectId.startsWith('table:')) return 'data'
   if (objectId.startsWith('block:') || objectId.startsWith('claim:') || objectId.startsWith('citation:') || objectId.startsWith('annotation:') || objectId.startsWith('decision:') || objectId.startsWith('source:')) return 'docs'
   return surfaces[0] ?? 'docs'
 }
@@ -26,6 +27,11 @@ export function locateWorkspaceObject(workspace: WorkspaceState, objectId: strin
   if (objectId.startsWith('relationship:')) {
     const relationship = workspace.relationships.find((item) => item.id === objectId)
     if (relationship) return { objectId, label:relationship.label, surface:'data', secondarySurfaces:[], focus:objectId }
+  }
+  if (objectId.startsWith('table:')) {
+    const id=objectId.replace(/^table:/,'')
+    const table=getImportedTables(workspace).find((item)=>item.id===id)
+    if(table)return{objectId,label:table.label,surface:'data',secondarySurfaces:[],focus:objectId}
   }
   if (objectId.startsWith('source:')) {
     const source = workspace.sources.find((item) => item.id === objectId)
