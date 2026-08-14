@@ -1,5 +1,5 @@
 import { type TableData, type TableSchema } from './formulas.ts'
-import { evaluateSemanticExpression, type SemanticDimension } from './expressions.ts'
+import { evaluateSemanticExpression, type SemanticDimension, type SemanticExpressionResult } from './expressions.ts'
 
 export type Surface = 'docs' | 'data' | 'present'
 export type ObjectKind = 'document' | 'region' | 'plan' | 'metric' | 'decision' | 'scene' | 'chart'
@@ -122,8 +122,8 @@ export function regionsTable(workspace:WorkspaceState):TableData { return {schem
 export function planTable(workspace:WorkspaceState):TableData { return {schema:planSchema,rows:workspace.plans.map(row=>({Region:row.region,Revenue:row.revenue}))} }
 export function workspaceTables(workspace:WorkspaceState):TableData[] { return [regionsTable(workspace),planTable(workspace)] }
 function metricDimension(metric:Metric):SemanticDimension{return metric.format}
-export function evaluateWorkspaceFormula(workspace:WorkspaceState,expression:string,metricStack:string[]=[]){return evaluateSemanticExpression(expression,workspaceTables(workspace),{resolveMetric:(metricId)=>{const metric=workspace.metrics.find(candidate=>candidate.id===metricId);if(!metric)throw new Error(`Unknown metric: ${metricId}`);const result=evaluateMetric(workspace,metricId,metricStack);return{value:result.value,dimension:metricDimension(metric)}}})}
-export function evaluateMetric(workspace:WorkspaceState,metricId:string,metricStack:string[]=[]){if(metricStack.includes(metricId))throw new Error(`Circular metric dependency: ${[...metricStack,metricId].join(' -> ')}`);const metric=workspace.metrics.find(c=>c.id===metricId);if(!metric)throw new Error(`Unknown metric: ${metricId}`);if(!metric.formula)return{value:metric.value,dependencies:[],metricDependencies:[],terms:[],dimension:metricDimension(metric)};return evaluateWorkspaceFormula(workspace,metric.formula,[...metricStack,metricId])}
+export function evaluateWorkspaceFormula(workspace:WorkspaceState,expression:string,metricStack:string[]=[]):SemanticExpressionResult{return evaluateSemanticExpression(expression,workspaceTables(workspace),{resolveMetric:(metricId:string):{value:number;dimension:SemanticDimension}=>{const metric=workspace.metrics.find(candidate=>candidate.id===metricId);if(!metric)throw new Error(`Unknown metric: ${metricId}`);const result:SemanticExpressionResult=evaluateMetric(workspace,metricId,metricStack);return{value:result.value,dimension:metricDimension(metric)}}})}
+export function evaluateMetric(workspace:WorkspaceState,metricId:string,metricStack:string[]=[]):SemanticExpressionResult{if(metricStack.includes(metricId))throw new Error(`Circular metric dependency: ${[...metricStack,metricId].join(' -> ')}`);const metric=workspace.metrics.find(c=>c.id===metricId);if(!metric)throw new Error(`Unknown metric: ${metricId}`);if(!metric.formula)return{value:metric.value,dependencies:[],metricDependencies:[],objectDependencies:[],terms:[],dimension:metricDimension(metric)};return evaluateWorkspaceFormula(workspace,metric.formula,[...metricStack,metricId])}
 export function formatMetric(metric:Metric){if(metric.format==='currency')return `$${metric.value.toFixed(1)}M`;if(metric.format==='percent')return `${metric.value.toFixed(metric.value%1?1:0)}%`;return metric.value.toLocaleString()}
 export function metricDelta(metric:Metric){return metric.value-metric.previous}
 export function cloneSeedWorkspace():WorkspaceState{return structuredClone(seedWorkspace)}
