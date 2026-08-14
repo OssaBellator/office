@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useState } from 'react'
-import { AlertCircle, BarChart3, Check, ChevronRight, Database, FileText, Link2, Presentation, Sparkles, Table2 } from 'lucide-react'
+import { AlertCircle, BarChart3, Check, ChevronRight, Database, FileText, Link2, Plus, Presentation, Sparkles, Table2, Trash2 } from 'lucide-react'
 import {
   formatMetric,
   getObjectLineage,
   planSchema,
   regionsSchema,
+  type Metric,
   type PlanRow,
   type RegionRow,
   type WorkspaceObject,
@@ -13,19 +14,22 @@ import {
 import { getEditableChart, type EditableChartKind } from '../chartModel'
 import { getMetricFormulaSuggestions, getRelationshipReferenceSummary, listFormulaReferences } from '../formulaCatalog'
 import { inspectAllRelationships } from '../relationshipDiagnostics'
-import { validateMetricFormula } from '../semanticCommands'
+import { previewVersionedCommand } from '../semanticPreview'
+import { validateMetricFormula, type VersionedWorkspaceCommand } from '../semanticCommands'
+import { REVENUE_ATTAINMENT_FORMULA } from '../workspaceKpis'
 import { RelationshipChart } from './RelationshipChart'
 
 type DataMode = 'grid' | 'model' | 'analyse'
 type GridTable = 'actual' | 'plan'
 
-export function DataSurface({ workspace, focusedObjectId, updateRegion, updatePlan, updateMetricFormula, updateChartKind }: {
+export function DataSurface({ workspace, focusedObjectId, updateRegion, updatePlan, updateMetricFormula, updateChartKind, onSemanticCommand }: {
   workspace: WorkspaceState
   focusedObjectId?: string | null
   updateRegion: (id: string, field: keyof RegionRow, value: string | number) => void
   updatePlan: (id: string, field: keyof PlanRow, value: string | number) => void
   updateMetricFormula: (metricId: string, formula: string) => void
   updateChartKind: (chartId: string, kind: EditableChartKind) => void
+  onSemanticCommand: (command: VersionedWorkspaceCommand) => void
 }) {
   const [mode, setMode] = useState<DataMode>('grid')
   useEffect(() => {
@@ -38,7 +42,7 @@ export function DataSurface({ workspace, focusedObjectId, updateRegion, updatePl
     <div className="surface-heading"><div><span className="surface-kicker">Financial model</span><h1>Revenue model</h1><p>Actuals and plan are separate typed tables connected through semantic metrics and lineage.</p></div><div className="model-health"><span className="status-dot" /> {workspace.graph.edges.length} live dependencies</div></div>
     <div className="data-tabs"><button className={mode === 'grid' ? 'active' : ''} onClick={() => setMode('grid')}><Table2 size={14} /> Grid</button><button className={mode === 'model' ? 'active' : ''} onClick={() => setMode('model')}><Database size={14} /> Model</button><button className={mode === 'analyse' ? 'active' : ''} onClick={() => setMode('analyse')}><BarChart3 size={14} /> Analyse</button></div>
     {mode === 'grid' && <GridView workspace={workspace} focusedObjectId={focusedObjectId} updateRegion={updateRegion} updatePlan={updatePlan} />}
-    {mode === 'model' && <ModelView workspace={workspace} updateMetricFormula={updateMetricFormula} />}
+    {mode === 'model' && <ModelView workspace={workspace} updateMetricFormula={updateMetricFormula} onSemanticCommand={onSemanticCommand} />}
     {mode === 'analyse' && <AnalysisView workspace={workspace} updateChartKind={updateChartKind} />}
   </div>
 }
@@ -80,7 +84,7 @@ function PlanGridRow({ row, updatePlan }: { row: PlanRow; updatePlan: (id: strin
   return <tr data-frame-object={`plan:${row.id}`}><td><input value={draft.region} onChange={(event) => setDraft((current) => ({ ...current, region: event.target.value }))} onBlur={commitText} /></td><td><div className="number-input"><span>$</span><input type="number" step="0.1" value={draft.revenue} onChange={(event) => setDraft((current) => ({ ...current, revenue: event.target.value }))} onBlur={commitRevenue} /><span>M</span></div></td></tr>
 }
 
-function ModelView({ workspace, updateMetricFormula }: { workspace: WorkspaceState; updateMetricFormula: (metricId: string, formula: string) => void }) {
+function ModelView({ workspace, updateMetricFormula, onSemanticCommand }: { workspace: WorkspaceState; updateMetricFormula: (metricId: string, formula: string) => void; onSemanticCommand: (command: VersionedWorkspaceCommand) => void }) {
   const revenueLineage = getObjectLineage(workspace, 'metric:revenue')
   const planLineage = getObjectLineage(workspace, 'metric:planRevenue')
   const chartLineage = getObjectLineage(workspace, 'chart:revenue-vs-plan')
@@ -88,10 +92,10 @@ function ModelView({ workspace, updateMetricFormula }: { workspace: WorkspaceSta
   const relationship = workspace.relationships.find((item) => item.id === 'relationship:regions-plan')
   const relationshipReport = inspectAllRelationships(workspace).find((report) => report.relationship.id === relationship?.id)
   const computedMetrics = workspace.metrics.filter((metric) => Boolean(metric.formula))
-  return <div className="model-view"><div className="model-summary-grid"><section className="schema-card"><span className="model-label">TABLE SCHEMAS</span><SchemaDefinition schema={regionsSchema} /><SchemaDefinition schema={planSchema} />{relationship && <div className="schema-definition" data-frame-object={relationship.id}><span className="model-label">RELATIONSHIP</span><div className="schema-title"><Link2 size={15} /><strong>{relationship.label}</strong></div><div className="schema-field"><span>{relationship.fromTable}.{relationship.fromField}</span><small>↔ {relationship.toTable}.{relationship.toField}</small></div>{relationshipReport && <div className="relationship-health"><div className="relationship-health-head"><strong>Integrity</strong><span className={relationshipReport.valid && relationshipReport.issues.length === 0 ? '' : 'warning'}>{relationshipReport.valid ? `${relationshipReport.matchedKeys.length} matched keys` : 'Needs attention'}</span></div>{relationshipReport.issues.length > 0 && <div className="relationship-issues">{relationshipReport.issues.map((issue) => <div className={`relationship-issue ${issue.severity}`} key={`${issue.kind}:${issue.keys.join('|')}`}>{issue.message}</div>)}</div>}</div>}</div>}</section><section className="formula-card metric-editor-stack"><span className="model-label">COMPUTED METRICS · {computedMetrics.length}</span>{computedMetrics.map((metric) => <MetricFormulaEditor workspace={workspace} metricId={metric.id} updateMetricFormula={updateMetricFormula} key={metric.id} />)}</section></div><FormulaReferenceBrowser workspace={workspace} /><DependencyChain title="Actual revenue lineage" subtitle="Regional actuals derive one shared metric used throughout the workspace." upstream={revenueLineage.upstream} center={revenueLineage.object} downstream={revenueLineage.downstream} /><DependencyChain title="Revenue plan lineage" subtitle="Plan rows remain distinct from actuals while producing a comparable shared metric." upstream={planLineage.upstream} center={planLineage.object} downstream={planLineage.downstream} /><DependencyChain title="Shared chart lineage" subtitle="One relationship-backed chart definition renders in both Analyse and Present." upstream={chartLineage.upstream} center={chartLineage.object} downstream={chartLineage.downstream} /><DependencyChain title="Decision lineage" subtitle="Performance evidence supports a decision object that remains shared across Docs and Present." upstream={decisionLineage.upstream} center={decisionLineage.object} downstream={decisionLineage.downstream} /></div>
+  return <div className="model-view"><div className="model-summary-grid"><section className="schema-card"><span className="model-label">TABLE SCHEMAS</span><SchemaDefinition schema={regionsSchema} /><SchemaDefinition schema={planSchema} />{relationship && <div className="schema-definition" data-frame-object={relationship.id}><span className="model-label">RELATIONSHIP</span><div className="schema-title"><Link2 size={15} /><strong>{relationship.label}</strong></div><div className="schema-field"><span>{relationship.fromTable}.{relationship.fromField}</span><small>↔ {relationship.toTable}.{relationship.toField}</small></div>{relationshipReport && <div className="relationship-health"><div className="relationship-health-head"><strong>Integrity</strong><span className={relationshipReport.valid && relationshipReport.issues.length === 0 ? '' : 'warning'}>{relationshipReport.valid ? `${relationshipReport.matchedKeys.length} matched keys` : 'Needs attention'}</span></div>{relationshipReport.issues.length > 0 && <div className="relationship-issues">{relationshipReport.issues.map((issue) => <div className={`relationship-issue ${issue.severity}`} key={`${issue.kind}:${issue.keys.join('|')}`}>{issue.message}</div>)}</div>}</div>}</div>}</section><section className="formula-card metric-editor-stack"><div className="metric-registry-heading"><span className="model-label">COMPUTED METRICS · {computedMetrics.length}</span></div>{computedMetrics.map((metric) => <MetricFormulaEditor workspace={workspace} metricId={metric.id} updateMetricFormula={updateMetricFormula} onSemanticCommand={onSemanticCommand} key={metric.id} />)}<NewMetricBuilder workspace={workspace} onSemanticCommand={onSemanticCommand} /></section></div><FormulaReferenceBrowser workspace={workspace} /><DependencyChain title="Actual revenue lineage" subtitle="Regional actuals derive one shared metric used throughout the workspace." upstream={revenueLineage.upstream} center={revenueLineage.object} downstream={revenueLineage.downstream} /><DependencyChain title="Revenue plan lineage" subtitle="Plan rows remain distinct from actuals while producing a comparable shared metric." upstream={planLineage.upstream} center={planLineage.object} downstream={planLineage.downstream} /><DependencyChain title="Shared chart lineage" subtitle="One relationship-backed chart definition renders in both Analyse and Present." upstream={chartLineage.upstream} center={chartLineage.object} downstream={chartLineage.downstream} /><DependencyChain title="Decision lineage" subtitle="Performance evidence supports a decision object that remains shared across Docs and Present." upstream={decisionLineage.upstream} center={decisionLineage.object} downstream={decisionLineage.downstream} /></div>
 }
 function SchemaDefinition({ schema }: { schema: typeof regionsSchema | typeof planSchema }) { return <div className="schema-definition"><div className="schema-title"><Table2 size={15} /><strong>{schema.label}</strong></div>{schema.fields.map((field) => <div className="schema-field" key={field.id}><span>{field.label}</span><small>{field.type}</small></div>)}</div> }
-function MetricFormulaEditor({ workspace, metricId, updateMetricFormula }: { workspace: WorkspaceState; metricId: string; updateMetricFormula: (metricId: string, formula: string) => void }) {
+function MetricFormulaEditor({ workspace, metricId, updateMetricFormula, onSemanticCommand }: { workspace: WorkspaceState; metricId: string; updateMetricFormula: (metricId: string, formula: string) => void; onSemanticCommand: (command: VersionedWorkspaceCommand) => void }) {
   const metric = workspace.metrics.find((candidate) => candidate.id === metricId)!
   const [formulaDraft, setFormulaDraft] = useState(metric.formula ?? '')
   useEffect(() => setFormulaDraft(metric.formula ?? ''), [metric.formula])
@@ -99,7 +103,33 @@ function MetricFormulaEditor({ workspace, metricId, updateMetricFormula }: { wor
   const formulaState = useMemo(() => { if (!formulaDraft.trim()) return { error: 'A computed metric needs a formula.', value: null as number | null }; try { return { error: null, value: validateMetricFormula(workspace, metricId, formulaDraft).value } } catch (error) { return { error: error instanceof Error ? error.message : 'Invalid formula', value: null } } }, [formulaDraft, metricId, workspace])
   const changed = formulaDraft.trim() !== (metric.formula ?? '')
   const previewMetric = formulaState.value === null ? metric : { ...metric, value: formulaState.value }
-  return <div className="metric-formula-editor" data-frame-object={`metric:${metricId}`}><div className="metric-formula-heading"><strong>{metric.label}</strong><span>{formatMetric(metric)}</span></div><div className={formulaState.error ? 'formula-editor invalid' : 'formula-editor'}><input value={formulaDraft} onChange={(event) => setFormulaDraft(event.target.value)} spellCheck={false} aria-label={`${metric.label} semantic formula`} /><button disabled={!changed || !!formulaState.error} onClick={() => updateMetricFormula(metricId, formulaDraft.trim())}><Check size={13} /> Apply</button></div>{formulaState.error ? <div className="formula-validation error"><AlertCircle size={12} /> {formulaState.error}</div> : <div className="formula-validation"><Check size={12} /> Preview → {formatMetric(previewMetric)}</div>}{suggestions.length > 0 && <div className="formula-suggestion-chips">{suggestions.map((suggestion) => <button key={suggestion.expression} onClick={() => setFormulaDraft(suggestion.expression)} title={suggestion.description}>{suggestion.label}</button>)}</div>}</div>
+  const consumers = [...new Set(workspace.graph.edges.filter((edge) => edge.from === `metric:${metricId}`).map((edge) => edge.to))]
+  return <div className="metric-formula-editor" data-frame-object={`metric:${metricId}`}><div className="metric-formula-heading"><strong>{metric.label}</strong><div><span>{formatMetric(metric)}</span>{consumers.length === 0 && <button className="metric-remove-button" onClick={() => onSemanticCommand({ type:'metric.remove', metricId })} title={`Remove ${metric.label}`}><Trash2 size={12} /></button>}</div></div><div className={formulaState.error ? 'formula-editor invalid' : 'formula-editor'}><input value={formulaDraft} onChange={(event) => setFormulaDraft(event.target.value)} spellCheck={false} aria-label={`${metric.label} semantic formula`} /><button disabled={!changed || !!formulaState.error} onClick={() => updateMetricFormula(metricId, formulaDraft.trim())}><Check size={13} /> Apply</button></div>{formulaState.error ? <div className="formula-validation error"><AlertCircle size={12} /> {formulaState.error}</div> : <div className="formula-validation"><Check size={12} /> Preview → {formatMetric(previewMetric)}</div>}{suggestions.length > 0 && <div className="formula-suggestion-chips">{suggestions.map((suggestion) => <button key={suggestion.expression} onClick={() => setFormulaDraft(suggestion.expression)} title={suggestion.description}>{suggestion.label}</button>)}</div>}</div>
+}
+function metricId(workspace: WorkspaceState, label: string) {
+  const stem = `custom-${label.toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'') || 'metric'}`
+  let candidate = stem, index = 2
+  while (workspace.metrics.some((metric) => metric.id === candidate)) candidate = `${stem}-${index++}`
+  return candidate
+}
+function defaultFormula(format: Metric['format']) { return format === 'currency' ? 'SUM(Regions.Revenue)' : format === 'percent' ? REVENUE_ATTAINMENT_FORMULA : 'COUNT(Regions.Region)' }
+function NewMetricBuilder({ workspace, onSemanticCommand }: { workspace: WorkspaceState; onSemanticCommand: (command: VersionedWorkspaceCommand) => void }) {
+  const [open, setOpen] = useState(false)
+  const [label, setLabel] = useState('')
+  const [format, setFormat] = useState<Metric['format']>('currency')
+  const [formula, setFormula] = useState(defaultFormula('currency'))
+  const id = metricId(workspace, label)
+  const metric: Metric = { id, label:label.trim() || 'New metric', value:0, previous:0, format, source:'Semantic model · User-defined metric', updatedAt:'just now', formula:formula.trim() }
+  const preview = useMemo(() => {
+    if (!open || !label.trim() || !formula.trim()) return { error:null as string | null, metric:null as Metric | null }
+    try {
+      const result = previewVersionedCommand(workspace, { type:'metric.create', metric })
+      return { error:null, metric:result.workspace.metrics.find((candidate) => candidate.id === id) ?? null }
+    } catch (error) { return { error:error instanceof Error ? error.message : 'Invalid metric', metric:null } }
+  }, [workspace, open, label, format, formula, id])
+  const reset = () => { setOpen(false); setLabel(''); setFormat('currency'); setFormula(defaultFormula('currency')) }
+  if (!open) return <button className="new-metric-button" onClick={() => setOpen(true)}><Plus size={13} /> New computed metric</button>
+  return <div className="new-metric-builder"><div className="new-metric-fields"><input value={label} onChange={(event) => setLabel(event.target.value)} placeholder="Metric name" aria-label="New metric name" /><select value={format} onChange={(event) => { const next=event.target.value as Metric['format'];setFormat(next);setFormula(defaultFormula(next)) }} aria-label="New metric format"><option value="currency">Currency</option><option value="percent">Percent</option><option value="number">Number</option></select></div><input className="new-metric-formula" value={formula} onChange={(event) => setFormula(event.target.value)} spellCheck={false} aria-label="New metric formula" />{preview.error ? <div className="formula-validation error"><AlertCircle size={12} /> {preview.error}</div> : preview.metric ? <div className="formula-validation"><Check size={12} /> Preview → {formatMetric(preview.metric)}</div> : <div className="formula-validation">Name the metric to validate its semantic formula.</div>}<div className="new-metric-actions"><button className="secondary-button" onClick={reset}>Cancel</button><button className="primary-button" disabled={!preview.metric || !!preview.error} onClick={() => { onSemanticCommand({ type:'metric.create', metric }); reset() }}><Plus size={12} /> Create metric</button></div></div>
 }
 function FormulaReferenceBrowser({ workspace }: { workspace: WorkspaceState }) {
   const references = listFormulaReferences()
