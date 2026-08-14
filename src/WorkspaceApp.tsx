@@ -181,7 +181,7 @@ export default function WorkspaceApp() {
         <div className={contextOpen ? 'workbench with-context' : 'workbench'}>
           <section className="canvas-area">
             {surface === 'docs' && <DocsSurface workspace={workspace} commitDocument={commitDocument} onSemanticCommand={execute} onOpenData={() => setSurface('data')} />}
-            {surface === 'data' && <DataSurface workspace={workspace} updateRegion={updateRegion} updatePlan={updatePlan} updateMetricFormula={updateMetricFormula} />}
+            {surface === 'data' && <DataSurface workspace={workspace} updateRegion={updateRegion} updatePlan={updatePlan} updateMetricFormula={updateMetricFormula} updateChartKind={(chartId, kind) => execute({ type: 'chart.kind', chartId, kind })} />}
             {surface === 'present' && <PresentSurface workspace={workspace} />}
           </section>
           {contextOpen && <ContextPanel workspace={workspace} surface={surface} transactions={session.past} onSetSourceStatus={updateSourceStatus} onClose={() => setContextOpen(false)} />}
