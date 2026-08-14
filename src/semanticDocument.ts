@@ -24,7 +24,7 @@ export type SemanticCitation = {
 
 export type SemanticParagraphStyle = 'body' | 'heading-1' | 'heading-2' | 'heading-3' | 'bullet' | 'numbered'
 export type SemanticDocumentBlock =
-  | { id: string; type: 'paragraph'; text: string; style?: SemanticParagraphStyle }
+  | { id: string; type: 'paragraph'; text: string; style?: SemanticParagraphStyle; source?: string }
   | { id: string; type: 'claim'; claimId: string }
   | { id: string; type: 'metric-embed'; metricIds: string[]; label: string }
   | { id: string; type: 'decision-embed'; decisionId: string }
