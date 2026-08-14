@@ -18,6 +18,7 @@ import './governance-ui.css'
 import './attainment.css'
 import './object-focus.css'
 import './metric-authoring.css'
+import './imported-tables.css'
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
