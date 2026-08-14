@@ -33,6 +33,9 @@ test('claims become stale with stale sources and contradicted when their evidenc
   session = executeVersionedWorkspaceCommand(session, { type: 'source.status', sourceId: 'source:finance', status: 'live' })
   session = executeVersionedWorkspaceCommand(session, { type: 'region.update', regionId: 'eu', field: 'growth', value: 40 })
   assert.equal(resolveSemanticClaim(session.present, 'claim:growth-leader').status, 'contradicted')
+  assert.equal(session.present.history[0].affectedObjectIds.includes('claim:growth-leader'), true)
+  assert.equal(session.present.history[0].affectedObjectIds.includes('block:growth-claim'), true)
+  assert.equal(session.present.history[0].affectedObjectIds.includes('document:strategy'), true)
 })
 
 test('evidence insertion creates explicit block, claim and citation objects', () => {
