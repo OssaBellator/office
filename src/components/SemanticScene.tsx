@@ -22,8 +22,10 @@ function ThesisScene({ workspace }: { workspace: WorkspaceState }) {
 function PerformanceScene({ workspace }: { workspace: WorkspaceState }) {
   const revenue = workspace.metrics.find((metric) => metric.id === 'revenue')!
   const growth = workspace.metrics.find((metric) => metric.id === 'growth')!
+  const plan = workspace.metrics.find((metric) => metric.id === 'planRevenue')!
+  const variance = revenue.value - plan.value
   const maxRevenue = Math.max(...workspace.regions.map((row) => row.revenue))
-  return <><span className="slide-kicker">02 — PERFORMANCE</span><div className="slide-hero-metric">{formatMetric(revenue)}</div><h2>Q2 revenue, growing {formatMetric(growth)} year over year.</h2><div className="slide-chart">{workspace.regions.map((row) => <div className="slide-bar-wrap" key={row.id}><div className="slide-bar" style={{ height: `${Math.max(22, (row.revenue / maxRevenue) * 130)}px` }} /><span>{abbreviate(row.region)}</span></div>)}</div></>
+  return <><span className="slide-kicker">02 — PERFORMANCE</span><div className="slide-hero-metric">{formatMetric(revenue)}</div><h2>Q2 revenue, growing {formatMetric(growth)} year over year.</h2><div className={variance >= 0 ? 'slide-plan-variance positive' : 'slide-plan-variance negative'}>{variance >= 0 ? '+' : ''}${variance.toFixed(1)}M vs {formatMetric(plan)} plan</div><div className="slide-chart">{workspace.regions.map((row) => <div className="slide-bar-wrap" key={row.id}><div className="slide-bar" style={{ height: `${Math.max(22, (row.revenue / maxRevenue) * 130)}px` }} /><span>{abbreviate(row.region)}</span></div>)}</div></>
 }
 
 function SignalScene({ workspace }: { workspace: WorkspaceState }) {
