@@ -1,5 +1,5 @@
 import { readOfficeXml, readOfficeZip } from './officeArchive.ts'
-import { parseDocxDocumentXml, parsePptxSlideXml, parseXlsxSharedStrings, parseXlsxWorkbook, type ImportedSheet } from './officeParsers.ts'
+import { parseDocxDocumentXml, parsePptxSlideOrder, parsePptxSlideXml, parseRelatedPartPath, parseXlsxSharedStrings, parseXlsxWorkbook, type ImportedSheet } from './officeParsers.ts'
 import { getSemanticDocument, type SemanticParagraphStyle } from './semanticDocument.ts'
 import { getPresentationState, type ImportedPresentationScene } from './presentationState.ts'
 import type { WorkspaceState } from './model.ts'
@@ -19,6 +19,8 @@ function slug(value: string) { return value.toLowerCase().replace(/\.[^.]+$/, ''
 function normalized(value: unknown) { return String(value ?? '').trim().toLowerCase().replace(/[^a-z0-9]+/g, '') }
 function numberValue(value: unknown) { const result=typeof value==='number'?value:Number(String(value??'').replace(/[$,%\s]/g,'')); return Number.isFinite(result)?result:null }
 function nearlyEqual(a: number, b: number) { return Math.abs(a-b) < 1e-9 }
+function hasPath(entries: Map<string,Uint8Array>, pattern: RegExp) { return [...entries.keys()].some((path)=>pattern.test(path)) }
+function relsPath(partPath: string) { const segments=partPath.split('/');const file=segments.pop()!;return [...segments,'_rels',`${file}.rels`].join('/') }
 
 export async function planDocxImport(workspace: WorkspaceState, input: ArrayBuffer | Uint8Array, fileName: string): Promise<OfficeImportPlan> {
   const entries = await readOfficeZip(input)
@@ -33,32 +35,46 @@ export async function planDocxImport(workspace: WorkspaceState, input: ArrayBuff
     index:startIndex+index,
     block:{ id:`block:import:${importSuffix}:${index+1}`, type:'paragraph', text:block.text, style:(block.kind === 'paragraph' ? 'body' : block.kind) as SemanticParagraphStyle },
   }))
-  return { kind:'docx', label:`${fileName} · ${blocks.length} document blocks`, commands, warnings:[], importedItems:blocks.length }
+  const warnings:string[]=[]
+  if(hasPath(entries,/^word\/media\//i))warnings.push('Embedded DOCX images are not imported yet; text structure is preserved.')
+  if(hasPath(entries,/^word\/(?:charts|embeddings)\//i))warnings.push('Embedded DOCX charts or objects are not imported yet.')
+  if(/<w:tbl\b/i.test(documentXml))warnings.push('DOCX tables are currently imported as their contained paragraphs, not as semantic Data tables.')
+  return { kind:'docx', label:`${fileName} · ${blocks.length} document blocks`, commands, warnings, importedItems:blocks.length }
 }
 
-function slidePaths(entries: Map<string, Uint8Array>) {
+function numericSlidePaths(entries: Map<string, Uint8Array>) {
   return [...entries.keys()].flatMap((path) => {
     const match = path.match(/^ppt\/slides\/slide(\d+)\.xml$/i)
     return match ? [{ path, number:Number(match[1]) }] : []
-  }).sort((a,b)=>a.number-b.number)
+  }).sort((a,b)=>a.number-b.number).map((item)=>item.path)
+}
+
+function slideOrder(entries: Map<string,Uint8Array>) {
+  const ordered=parsePptxSlideOrder(readOfficeXml(entries,'ppt/presentation.xml'),readOfficeXml(entries,'ppt/_rels/presentation.xml.rels'))
+  const valid=ordered.filter((path)=>entries.has(path))
+  return valid.length?valid:numericSlidePaths(entries)
 }
 
 export async function planPptxImport(workspace: WorkspaceState, input: ArrayBuffer | Uint8Array, fileName: string): Promise<OfficeImportPlan> {
   const entries = await readOfficeZip(input)
-  const paths = slidePaths(entries)
+  const paths = slideOrder(entries)
   if (!paths.length) throw new Error('PPTX contains no slides')
   const importId = suffix()
   const fileSlug = slug(fileName)
   const source = `${fileName} · imported from PowerPoint / Google Slides export`
-  const importedScenes: ImportedPresentationScene[] = paths.map(({path,number}) => {
+  const importedScenes: ImportedPresentationScene[] = paths.map((path,index) => {
     const xml = readOfficeXml(entries,path)!
-    const note = readOfficeXml(entries,`ppt/notesSlides/notesSlide${number}.xml`)
+    const notePath=parseRelatedPartPath(path,readOfficeXml(entries,relsPath(path)),'notesSlide')
+    const note = notePath ? readOfficeXml(entries,notePath) : null
     const slide = parsePptxSlideXml(xml,note)
-    return { id:`imported:${fileSlug}-${importId}-${number}`, title:slide.title, body:slide.body, note:slide.note || undefined, source }
+    return { id:`imported:${fileSlug}-${importId}-${index+1}`, title:slide.title, body:slide.body, note:slide.note || undefined, source }
   })
   const state = getPresentationState(workspace)
   const next = { ...state, importedScenes:[...(state.importedScenes ?? []),...importedScenes], order:[...state.order,...importedScenes.map((scene)=>scene.id)] }
-  return { kind:'pptx', label:`${fileName} · ${importedScenes.length} slides`, commands:[{type:'presentation.replace',value:next}], warnings:[], importedItems:importedScenes.length }
+  const warnings:string[]=[]
+  if(hasPath(entries,/^ppt\/media\//i))warnings.push('Slide images and media are not imported yet; slide text and notes are preserved.')
+  if(hasPath(entries,/^ppt\/(?:charts|diagrams)\//i))warnings.push('PowerPoint charts and SmartArt are not imported yet; their source slide remains represented as a semantic scene.')
+  return { kind:'pptx', label:`${fileName} · ${importedScenes.length} slides`, commands:[{type:'presentation.replace',value:next}], warnings, importedItems:importedScenes.length }
 }
 
 function sheetHeader(sheet: ImportedSheet) {
@@ -117,11 +133,13 @@ export async function planXlsxImport(workspace: WorkspaceState, input: ArrayBuff
   if(!workbook||!relationships)throw new Error('XLSX is missing workbook metadata')
   const shared=parseXlsxSharedStrings(readOfficeXml(entries,'xl/sharedStrings.xml'))
   const xmlByPath=new Map<string,string>()
-  for(const path of entries.keys())if(/^xl\/worksheets\/[^/]+\.xml$/i.test(path)){const xml=readOfficeXml(entries,path);if(xml)xmlByPath.set(path,xml)}
+  let hasFormula=false
+  for(const path of entries.keys())if(/^xl\/worksheets\/[^/]+\.xml$/i.test(path)){const xml=readOfficeXml(entries,path);if(xml){xmlByPath.set(path,xml);if(/<f\b/i.test(xml))hasFormula=true}}
   const sheets=parseXlsxWorkbook(workbook,relationships,xmlByPath,shared)
   const commands:VersionedWorkspaceCommand[]=[],warnings:string[]=[]
   let matched=0
   for(const sheet of sheets){matched+=planActualSheet(workspace,sheet,commands,warnings);matched+=planPlanSheet(workspace,sheet,commands,warnings)}
+  if(hasFormula)warnings.push('Excel/Google Sheets formulas currently import through their cached values; Frame does not translate arbitrary spreadsheet formulas yet.')
   if(!matched)throw new Error('No compatible worksheet found. Frame currently recognises Region/Revenue/Growth/Margin actuals and Region/Revenue plan sheets.')
   return {kind:'xlsx',label:`${fileName} · ${sheets.length} sheets`,commands,warnings,importedItems:matched}
 }
