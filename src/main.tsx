@@ -5,6 +5,7 @@ import './styles.css'
 import './history.css'
 import './present.css'
 import './command-intent.css'
+import './local-tools.css'
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
