@@ -2,10 +2,13 @@ import { type TableData, type TableSchema } from './formulas.ts'
 import { evaluateSemanticExpression } from './expressions.ts'
 
 export type Surface = 'docs' | 'data' | 'present'
-export type ObjectKind = 'document' | 'region' | 'plan' | 'metric' | 'decision' | 'scene'
+export type ObjectKind = 'document' | 'region' | 'plan' | 'metric' | 'decision' | 'scene' | 'chart'
 export type Metric = { id:string; label:string; value:number; previous:number; format:'currency'|'percent'|'number'; source:string; updatedAt:string; formula?:string }
 export type RegionRow = { id:string; region:string; revenue:number; growth:number; margin:number }
 export type PlanRow = { id:string; region:string; revenue:number }
+export type TableRelationship = { id:string; label:string; fromTable:string; fromField:string; toTable:string; toField:string; cardinality:'one-to-one'|'many-to-one' }
+export type ChartSeries = { id:string; label:string; tableId:string; fieldId:string }
+export type ChartDefinition = { id:string; label:string; kind:'grouped-bar'; relationshipId:string; category:{tableId:string;fieldId:string}; series:ChartSeries[] }
 export type Decision = { id:string; title:string; status:'approved'|'pending'; owner:string; rationale:string }
 export type SourceRecord = { id:string; label:string; type:'dataset'|'research'|'manual'; locator:string; status:'live'|'stale'; updatedAt:string }
 export type WorkspaceObject = { id:string; kind:ObjectKind; label:string; surfaces:Surface[] }
@@ -13,7 +16,7 @@ export type DependencyRelation = 'derives'|'renders'|'supports'|'decides'
 export type DependencyEdge = { from:string; to:string; relation:DependencyRelation; description:string }
 export type ChangeEvent = { id:string; changedAt:string; summary:string; changedObjectIds:string[]; affectedObjectIds:string[] }
 export type WorkspaceGraph = { objects:WorkspaceObject[]; edges:DependencyEdge[] }
-export type WorkspaceState = { title:string; document:{eyebrow:string;title:string;summary:string;body:string}; metrics:Metric[]; regions:RegionRow[]; plans:PlanRow[]; decisions:Decision[]; sources:SourceRecord[]; graph:WorkspaceGraph; history:ChangeEvent[] }
+export type WorkspaceState = { title:string; document:{eyebrow:string;title:string;summary:string;body:string}; metrics:Metric[]; regions:RegionRow[]; plans:PlanRow[]; relationships:TableRelationship[]; charts:ChartDefinition[]; decisions:Decision[]; sources:SourceRecord[]; graph:WorkspaceGraph; history:ChangeEvent[] }
 export type WorkspaceImpact = WorkspaceObject & { reason:string }
 export type WorkspaceMutationResult = { workspace:WorkspaceState; impacts:WorkspaceImpact[]; event:ChangeEvent }
 export type WorkspaceCommand =
@@ -35,6 +38,7 @@ function buildSeedGraph(): WorkspaceGraph {
     { id:'decision:launch', kind:'decision', label:'APAC expansion decision', surfaces:['docs','present'] },
     { id:'scene:performance', kind:'scene', label:'Board narrative · Performance', surfaces:['present'] },
     { id:'scene:decision', kind:'scene', label:'Board narrative · Decision', surfaces:['present'] },
+    { id:'chart:revenue-vs-plan', kind:'chart', label:'Actual vs plan by region', surfaces:['data','present'] },
     { id:'region:na', kind:'region', label:'North America', surfaces:['data'] },
     { id:'region:eu', kind:'region', label:'Europe', surfaces:['data'] },
     { id:'region:apac', kind:'region', label:'APAC', surfaces:['data'] },
@@ -54,6 +58,9 @@ function buildSeedGraph(): WorkspaceGraph {
     ...['na','eu','apac','latam'].map((region)=>({from:`plan:${region}`,to:'metric:variance',relation:'derives' as const,description:'Regional plans contribute to revenue variance'})),
     {from:'metric:variance',to:'document:strategy',relation:'renders',description:'Revenue variance is embedded in the strategy snapshot'},
     {from:'metric:variance',to:'scene:performance',relation:'renders',description:'Revenue variance informs the performance scene'},
+    {from:'metric:revenue',to:'chart:revenue-vs-plan',relation:'renders',description:'Actual revenue feeds the shared comparison chart'},
+    {from:'metric:planRevenue',to:'chart:revenue-vs-plan',relation:'renders',description:'Revenue plan feeds the shared comparison chart'},
+    {from:'chart:revenue-vs-plan',to:'scene:performance',relation:'renders',description:'Shared comparison chart renders in the performance scene'},
     {from:'metric:planRevenue',to:'scene:performance',relation:'renders',description:'Revenue plan informs the performance scene'},
     {from:'metric:revenue',to:'scene:performance',relation:'renders',description:'Revenue drives the performance scene'},
     {from:'metric:growth',to:'scene:performance',relation:'renders',description:'Growth drives the performance scene'},
@@ -91,6 +98,8 @@ export const seedWorkspace: WorkspaceState = {
     {id:'apac',region:'APAC',revenue:9.5},
     {id:'latam',region:'Latin America',revenue:4},
   ],
+  relationships:[{id:'relationship:regions-plan',label:'Actuals to plan by region',fromTable:'Regions',fromField:'Region',toTable:'Plan',toField:'Region',cardinality:'one-to-one'}],
+  charts:[{id:'revenue-vs-plan',label:'Actual vs plan by region',kind:'grouped-bar',relationshipId:'relationship:regions-plan',category:{tableId:'Regions',fieldId:'Region'},series:[{id:'actual',label:'Actual',tableId:'Regions',fieldId:'Revenue'},{id:'plan',label:'Plan',tableId:'Plan',fieldId:'Revenue'}]}],
   decisions:[{id:'launch',title:'Prioritise APAC expansion in the second half',status:'pending',owner:'Strategy',rationale:'APAC is the fastest-growing region, but margin remains below the company average.'}],
   sources:[
     {id:'source:finance',label:'Finance model',type:'dataset',locator:'Revenue · Q2 FY27',status:'live',updatedAt:'12 min ago'},
@@ -118,9 +127,10 @@ export function formatMetric(metric:Metric){if(metric.format==='currency')return
 export function metricDelta(metric:Metric){return metric.value-metric.previous}
 export function cloneSeedWorkspace():WorkspaceState{return structuredClone(seedWorkspace)}
 export function mergeWorkspaceGraph(base:WorkspaceGraph,incoming:WorkspaceGraph|undefined):WorkspaceGraph{if(!incoming)return structuredClone(base);const baseObjectIds=new Set(base.objects.map(object=>object.id));const objects=[...base.objects.map(object=>({...object,...(incoming.objects.find(candidate=>candidate.id===object.id)??{})})),...incoming.objects.filter(object=>!baseObjectIds.has(object.id))];const edgeKey=(edge:DependencyEdge)=>`${edge.from}|${edge.to}|${edge.relation}`;const incomingByKey=new Map(incoming.edges.map(edge=>[edgeKey(edge),edge]));const baseKeys=new Set(base.edges.map(edge=>edgeKey(edge)));const edges=[...base.edges.map(edge=>incomingByKey.get(edgeKey(edge))??edge),...incoming.edges.filter(edge=>!baseKeys.has(edgeKey(edge)))];return{objects,edges}}
+function mergeById<T extends {id:string}>(base:T[],incoming:T[]|undefined):T[]{if(!incoming)return structuredClone(base);const baseIds=new Set(base.map(item=>item.id));return [...base.map(item=>({...item,...(incoming.find(candidate=>candidate.id===item.id)??{})})),...incoming.filter(item=>!baseIds.has(item.id))]}
 export function hydrateWorkspace(value:Partial<WorkspaceState>|null|undefined):WorkspaceState{
   const base=cloneSeedWorkspace();if(!value)return base;const legacyMetrics=value.metrics??[];const knownMetricIds=new Set(base.metrics.map(m=>m.id));const metrics=[...base.metrics.map(metric=>({...metric,...(legacyMetrics.find(c=>c.id===metric.id)??{})})),...legacyMetrics.filter(m=>!knownMetricIds.has(m.id))];
-  return {...base,...value,document:{...base.document,...(value.document??{})},metrics,regions:value.regions??base.regions,plans:value.plans??base.plans,decisions:value.decisions??base.decisions,sources:value.sources??base.sources,graph:mergeWorkspaceGraph(base.graph,value.graph),history:value.history??[]}
+  return {...base,...value,document:{...base.document,...(value.document??{})},metrics,regions:value.regions??base.regions,plans:value.plans??base.plans,relationships:mergeById(base.relationships,value.relationships),charts:mergeById(base.charts,value.charts),decisions:value.decisions??base.decisions,sources:value.sources??base.sources,graph:mergeWorkspaceGraph(base.graph,value.graph),history:value.history??[]}
 }
 export function getUpstreamObjectIds(graph:WorkspaceGraph,objectIds:string[]):string[]{const targets=new Set(objectIds),visited=new Set(objectIds),queue=[...objectIds],upstream:string[]=[];while(queue.length){const current=queue.shift()!;for(const edge of graph.edges){if(edge.to!==current||visited.has(edge.from))continue;visited.add(edge.from);queue.push(edge.from);if(!targets.has(edge.from))upstream.push(edge.from)}}return upstream}
 export type ObjectLineage={object:WorkspaceObject;upstream:WorkspaceObject[];downstream:WorkspaceObject[];incoming:DependencyEdge[];outgoing:DependencyEdge[]}
