@@ -3,8 +3,9 @@ import {
   Check, ChevronRight, Clock3, Database, FileText, Grid3X3, Link2, MoreHorizontal,
   Play, Plus, Presentation, Search, Share2, Sparkles, Table2,
 } from 'lucide-react'
-import { cloneSeedWorkspace, type RegionRow, type Surface, type WorkspaceCommand, type WorkspaceState } from './model'
-import { previewWorkspaceCommand } from './commandPreview'
+import { cloneSeedWorkspace, type RegionRow, type Surface, type WorkspaceState } from './model'
+import { previewVersionedCommand } from './semanticPreview'
+import { parsePaletteIntent } from './intent'
 import {
   createVersionedWorkspaceSession,
   executeVersionedWorkspaceCommand,
@@ -54,11 +55,11 @@ export default function WorkspaceApp() {
   const [surface, setSurface] = useState<Surface>('docs')
   const [session, setSession] = useState<VersionedWorkspaceSession>(loadSession)
   const [commandOpen, setCommandOpen] = useState(false)
-  const [pendingCommand, setPendingCommand] = useState<WorkspaceCommand | null>(null)
+  const [pendingCommand, setPendingCommand] = useState<VersionedWorkspaceCommand | null>(null)
   const [contextOpen, setContextOpen] = useState(true)
   const [historyOpen, setHistoryOpen] = useState(false)
   const workspace = session.present
-  const commandPreview = pendingCommand ? previewWorkspaceCommand(workspace, pendingCommand) : null
+  const commandPreview = pendingCommand ? previewVersionedCommand(workspace, pendingCommand) : null
 
   useEffect(() => {
     localStorage.setItem(SESSION_STORAGE_KEY, serializeWorkspaceSession(session))
@@ -94,6 +95,18 @@ export default function WorkspaceApp() {
   const openCommandPalette = () => { setPendingCommand(null); setCommandOpen(true) }
   const restoreDemo = () => { setSession(createVersionedWorkspaceSession(cloneSeedWorkspace())); setPendingCommand(null); setCommandOpen(false); setHistoryOpen(false) }
   const revertTransaction = (transactionId: string) => setSession((current) => revertVersionedTransaction(current, transactionId).session)
+  const runPaletteQuery = (query: string) => {
+    const intent = parsePaletteIntent(query, workspace)
+    switch (intent.kind) {
+      case 'command': setPendingCommand(intent.command); return null
+      case 'navigate': setSurface(intent.surface); closeCommandPalette(); return null
+      case 'history': closeCommandPalette(); setHistoryOpen(true); return null
+      case 'undo': setSession((current) => undoVersionedWorkspaceSession(current)); closeCommandPalette(); return null
+      case 'redo': setSession((current) => redoVersionedWorkspaceSession(current)); closeCommandPalette(); return null
+      case 'error': return intent.message
+      case 'unknown': return intent.message
+    }
+  }
 
   return (
     <div className="app-shell">
@@ -134,7 +147,7 @@ export default function WorkspaceApp() {
       </main>
 
       <button className="ai-fab" onClick={openCommandPalette} aria-label="Open Frame command palette"><Sparkles size={18} /></button>
-      {commandOpen && <CommandPalette surface={surface} preview={commandPreview} onClose={closeCommandPalette} onStageEvidence={stageEvidence} onStageApproval={stageApproval} onApplyPreview={applyPendingCommand} onCancelPreview={() => setPendingCommand(null)} onRestore={restoreDemo} onSwitch={setSurface} />}
+      {commandOpen && <CommandPalette surface={surface} preview={commandPreview} onClose={closeCommandPalette} onStageEvidence={stageEvidence} onStageApproval={stageApproval} onApplyPreview={applyPendingCommand} onCancelPreview={() => setPendingCommand(null)} onSubmitQuery={runPaletteQuery} onRestore={restoreDemo} onSwitch={setSurface} />}
       {historyOpen && <HistoryBrowser session={session} onClose={() => setHistoryOpen(false)} onRevert={revertTransaction} />}
     </div>
   )
