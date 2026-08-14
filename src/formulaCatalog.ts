@@ -1,5 +1,6 @@
 import { planSchema, regionsSchema, type Metric, type WorkspaceState } from './model.ts'
 import type { FieldSchema, TableSchema } from './formulas.ts'
+import { REVENUE_ATTAINMENT_FORMULA } from './workspaceKpis.ts'
 
 export type FormulaSuggestion = {
   expression: string
@@ -40,6 +41,7 @@ export function getMetricFormulaSuggestions(workspace: WorkspaceState, metricId:
     }
   }
   if (metric.format === 'currency') suggestions.push({ expression:'SUM(Regions.Revenue) - SUM(Plan.Revenue)', label:'Actual minus plan', description:'Cross-table revenue variance' })
+  if (metric.format === 'percent') suggestions.push({ expression:REVENUE_ATTAINMENT_FORMULA, label:'Actual / plan attainment', description:'Actual revenue divided by planned revenue, expressed as a percentage' })
   if (metric.format === 'number') suggestions.push({ expression:'COUNT(Regions.Region)', label:'Region count', description:'Count rows in Regions' })
   const current = metric.formula?.trim()
   return [...new Map(suggestions.map((item) => [item.expression,item])).values()].filter((item) => item.expression !== current)
