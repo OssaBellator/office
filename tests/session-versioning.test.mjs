@@ -13,7 +13,6 @@ test('versioned semantic sessions roundtrip with revision counter', () => {
   let session = createVersionedWorkspaceSession(cloneSeedWorkspace())
   session = executeVersionedWorkspaceCommand(session, { type: 'decision.status', decisionId: 'launch', status: 'approved' })
   const restored = hydrateWorkspaceSession(JSON.parse(serializeWorkspaceSession(session)))
-
   assert.match(restored.past[0].id, /^transaction:/)
   assert.equal(restored.past[0].revision, 1)
   assert.equal(restored.nextRevision, 2)
@@ -25,7 +24,6 @@ test('redo branches and stable next revision survive persistence', () => {
   session = executeVersionedWorkspaceCommand(session, { type: 'region.update', regionId: 'apac', field: 'revenue', value: 10 })
   session = undoVersionedWorkspaceSession(session)
   const restored = hydrateWorkspaceSession(JSON.parse(serializeWorkspaceSession(session)))
-
   assert.equal(restored.future.length, 1)
   assert.equal(restored.nextRevision, 2)
   const redone = redoVersionedWorkspaceSession(restored)
@@ -36,17 +34,24 @@ test('old workspace-session shape hydrates into versioned session', () => {
   const workspace = cloneSeedWorkspace()
   const oldSession = {
     present: workspace,
-    past: [{
-      id: 'transaction:1',
-      command: { type: 'decision.status', decisionId: 'launch', status: 'approved' },
-      summary: 'legacy',
-      before: workspace,
-      after: workspace,
-    }],
+    past: [{ id: 'transaction:1', command: { type: 'decision.status', decisionId: 'launch', status: 'approved' }, summary: 'legacy', before: workspace, after: workspace }],
     future: [],
   }
   const restored = hydrateWorkspaceSession(oldSession)
   assert.equal(restored.past[0].revision, 1)
   assert.match(restored.past[0].eventId, /^event:/)
   assert.equal(restored.nextRevision, 2)
+})
+
+test('legacy transaction migration aligns embedded event identity with the migrated transaction', () => {
+  const workspace = cloneSeedWorkspace()
+  const after = cloneSeedWorkspace()
+  after.history = [{ id: 'change:1', changedAt: 'then', summary: 'legacy event', changedObjectIds: ['decision:launch'], affectedObjectIds: ['document:strategy'] }]
+  const restored = hydrateWorkspaceSession({
+    present: after,
+    past: [{ id: 'transaction:1', command: { type: 'decision.status', decisionId: 'launch', status: 'approved' }, summary: 'legacy event', before: workspace, after }],
+    future: [],
+  })
+  assert.equal(restored.past[0].after.history[0].id, restored.past[0].eventId)
+  assert.match(restored.past[0].eventId, /^event:/)
 })
