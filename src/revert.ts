@@ -1,4 +1,4 @@
-import type { WorkspaceState } from './model.ts'
+import type { Metric, WorkspaceState } from './model.ts'
 import { getEditableChart } from './chartModel.ts'
 import { getPresentationState } from './presentationState.ts'
 import { getSemanticDocument } from './semanticDocument.ts'
@@ -10,6 +10,7 @@ export type RevertPlan={transaction:VersionedWorkspaceTransaction;canRevert:bool
 const conflict=(objectId:string,field:string,message:string):RevertConflict=>({objectId,field,message})
 function semanticJson(workspace:WorkspaceState){return JSON.stringify(getSemanticDocument(workspace))}
 function presentationJson(workspace:WorkspaceState){return JSON.stringify(getPresentationState(workspace))}
+function metricDefinition(metric:Metric){return JSON.stringify({id:metric.id,label:metric.label,format:metric.format,formula:metric.formula??null,source:metric.source,previous:metric.previous})}
 export function planTransactionRevert(session:VersionedWorkspaceSession,transactionId:string):RevertPlan{
   const transaction=session.past.find((x)=>x.id===transactionId);if(!transaction)throw new Error(`Unknown applied transaction: ${transactionId}`);const conflicts:RevertConflict[]=[];let inverseCommand:VersionedWorkspaceCommand|null=null;const current=session.present,command=transaction.command
   switch(command.type){
@@ -33,6 +34,8 @@ export function planTransactionRevert(session:VersionedWorkspaceSession,transact
     case'presentation.scene.move':
     case'presentation.scene.visibility':
     case'presentation.note.update':if(presentationJson(current)!==presentationJson(transaction.after))conflicts.push(conflict('presentation:story','state','Board narrative changed again after this transaction'));else inverseCommand={type:'presentation.replace',value:getPresentationState(transaction.before)};break
+    case'metric.create':{const after=transaction.after.metrics.find((x)=>x.id===command.metric.id),now=current.metrics.find((x)=>x.id===command.metric.id);if(!after||!now)conflicts.push(conflict(`metric:${command.metric.id}`,'object','Created metric no longer exists'));else if(metricDefinition(now)!==metricDefinition(after))conflicts.push(conflict(`metric:${command.metric.id}`,'object','Metric definition changed again after creation'));else{const consumers=current.graph.edges.filter((edge)=>edge.from===`metric:${command.metric.id}`).map((edge)=>edge.to);if(consumers.length)conflicts.push(conflict(`metric:${command.metric.id}`,'consumers',`Metric is now used by ${[...new Set(consumers)].join(', ')}`));else inverseCommand={type:'metric.remove',metricId:command.metric.id}}break}
+    case'metric.remove':{const before=transaction.before.metrics.find((x)=>x.id===command.metricId),now=current.metrics.find((x)=>x.id===command.metricId);if(!before)conflicts.push(conflict(`metric:${command.metricId}`,'object','Removed metric definition is unavailable'));else if(now)conflicts.push(conflict(`metric:${command.metricId}`,'object','Metric id was created again after removal'));else inverseCommand={type:'metric.create',metric:structuredClone(before)};break}
     case'metric.formula':{const before=transaction.before.metrics.find((x)=>x.id===command.metricId),after=transaction.after.metrics.find((x)=>x.id===command.metricId),now=current.metrics.find((x)=>x.id===command.metricId);if(!before||!after||!now)conflicts.push(conflict(`metric:${command.metricId}`,'formula','Metric no longer exists'));else if((now.formula??null)!==(after.formula??null))conflicts.push(conflict(`metric:${command.metricId}`,'formula','Formula changed again after this transaction'));else inverseCommand={type:'metric.formula',metricId:command.metricId,formula:before.formula??null,fallbackValue:before.value};break}
     case'source.status':{const before=transaction.before.sources.find((x)=>x.id===command.sourceId),after=transaction.after.sources.find((x)=>x.id===command.sourceId),now=current.sources.find((x)=>x.id===command.sourceId);if(!before||!after||!now)conflicts.push(conflict(command.sourceId,'status','Source no longer exists'));else if(now.status!==after.status)conflicts.push(conflict(command.sourceId,'status','Source freshness changed again after this transaction'));else inverseCommand={type:'source.status',sourceId:command.sourceId,status:before.status};break}
   }
