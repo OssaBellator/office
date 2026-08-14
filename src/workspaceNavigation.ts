@@ -12,7 +12,7 @@ export type WorkspaceObjectLocation = {
 
 function preferredSurface(surfaces: Surface[], objectId: string): Surface {
   if (objectId.startsWith('scene:')) return 'present'
-  if (objectId.startsWith('region:') || objectId.startsWith('plan:') || objectId.startsWith('metric:') || objectId.startsWith('chart:')) return 'data'
+  if (objectId.startsWith('region:') || objectId.startsWith('plan:') || objectId.startsWith('metric:') || objectId.startsWith('chart:') || objectId.startsWith('relationship:')) return 'data'
   if (objectId.startsWith('block:') || objectId.startsWith('claim:') || objectId.startsWith('citation:') || objectId.startsWith('annotation:') || objectId.startsWith('decision:') || objectId.startsWith('source:')) return 'docs'
   return surfaces[0] ?? 'docs'
 }
@@ -22,6 +22,10 @@ export function locateWorkspaceObject(workspace: WorkspaceState, objectId: strin
   if (graphObject) {
     const surface = preferredSurface(graphObject.surfaces, objectId)
     return { objectId, label:graphObject.label, surface, secondarySurfaces:graphObject.surfaces.filter((item) => item !== surface), focus:objectId }
+  }
+  if (objectId.startsWith('relationship:')) {
+    const relationship = workspace.relationships.find((item) => item.id === objectId)
+    if (relationship) return { objectId, label:relationship.label, surface:'data', secondarySurfaces:[], focus:objectId }
   }
   if (objectId.startsWith('source:')) {
     const source = workspace.sources.find((item) => item.id === objectId)
