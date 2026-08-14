@@ -24,6 +24,48 @@ function tagTexts(fragment: string, localName: string) {
   return result
 }
 
+export function parsePackageRelationships(xml: string | null) {
+  const relationships = new Map<string,{target:string;type:string}>()
+  if (!xml) return relationships
+  for (const match of xml.matchAll(/<(?:\w+:)?Relationship\b([^>]*)\/?\s*>/gi)) {
+    const id = attribute(match[1], 'Id'), target = attribute(match[1], 'Target'), type = attribute(match[1], 'Type') ?? ''
+    if (id && target) relationships.set(id, { target, type })
+  }
+  return relationships
+}
+
+export function resolvePackagePath(basePath: string, target: string) {
+  if (target.startsWith('/')) return target.replace(/^\/+/, '')
+  const parts = basePath.split('/').slice(0,-1)
+  for (const segment of target.split('/')) {
+    if (!segment || segment === '.') continue
+    if (segment === '..') parts.pop()
+    else parts.push(segment)
+  }
+  return parts.join('/')
+}
+
+export function parsePptxSlideOrder(presentationXml: string | null, relationshipsXml: string | null) {
+  if (!presentationXml || !relationshipsXml) return []
+  const relationships = parsePackageRelationships(relationshipsXml)
+  const paths: string[] = []
+  for (const match of presentationXml.matchAll(/<p:sldId\b([^>]*)\/?\s*>/gi)) {
+    const relId = attribute(match[1], 'id')
+    const relationship = relId ? relationships.get(relId) : undefined
+    if (!relationship) continue
+    paths.push(resolvePackagePath('ppt/presentation.xml', relationship.target))
+  }
+  return paths
+}
+
+export function parseRelatedPartPath(basePath: string, relationshipsXml: string | null, relationshipTypeSuffix: string) {
+  const relationships = parsePackageRelationships(relationshipsXml)
+  for (const relationship of relationships.values()) {
+    if (relationship.type.endsWith(`/${relationshipTypeSuffix}`)) return resolvePackagePath(basePath, relationship.target)
+  }
+  return null
+}
+
 function wordParagraphText(fragment: string) {
   const parts: string[] = []
   const regex = /<w:t\b[^>]*>([\s\S]*?)<\/w:t>|<w:tab\b[^>]*\/?\s*>|<w:br\b[^>]*\/?\s*>/gi
@@ -52,6 +94,15 @@ function parseDocxNumbering(xml: string | null) {
   return numFormats
 }
 
+function docxStyleKind(style: string): ImportedDocumentBlock['kind'] | null {
+  const normalized = style.replace(/[\s_-]+/g, '').toLowerCase()
+  const heading = normalized.match(/^heading([1-3])$/)
+  if (heading) return `heading-${heading[1]}` as ImportedDocumentBlock['kind']
+  if (normalized === 'title') return 'heading-1'
+  if (normalized === 'subtitle') return 'heading-2'
+  return null
+}
+
 export function parseDocxDocumentXml(documentXml: string, numberingXml: string | null = null): ImportedDocumentBlock[] {
   const numbering = parseDocxNumbering(numberingXml)
   const blocks: ImportedDocumentBlock[] = []
@@ -60,8 +111,8 @@ export function parseDocxDocumentXml(documentXml: string, numberingXml: string |
     const text = wordParagraphText(fragment)
     if (!text) continue
     const style = fragment.match(/<w:pStyle\b[^>]*w:val="([^"]+)"/i)?.[1] ?? ''
-    const heading = style.match(/heading\s*([1-3])/i)
-    if (heading) { blocks.push({ kind:`heading-${heading[1]}` as ImportedDocumentBlock['kind'], text }); continue }
+    const styleKind = docxStyleKind(style)
+    if (styleKind) { blocks.push({ kind:styleKind, text }); continue }
     const numId = fragment.match(/<w:numId\b[^>]*w:val="([^"]+)"/i)?.[1]
     if (numId) { blocks.push({ kind:numbering.get(numId) ?? 'numbered', text }); continue }
     blocks.push({ kind:'paragraph', text })
@@ -134,19 +185,15 @@ export function parseXlsxSharedStrings(xml: string | null) {
 }
 
 export function parseXlsxWorkbook(workbookXml: string, relationshipsXml: string, sheetXmlByPath: Map<string, string>, sharedStrings: string[] = []): ImportedSheet[] {
-  const relTargets = new Map<string,string>()
-  for (const match of relationshipsXml.matchAll(/<Relationship\b([^>]*)\/?\s*>/gi)) {
-    const id = attribute(match[1], 'Id'), target = attribute(match[1], 'Target')
-    if (id && target) relTargets.set(id, target.replace(/^\/?/, ''))
-  }
+  const relTargets = parsePackageRelationships(relationshipsXml)
   const sheets: ImportedSheet[] = []
   for (const match of workbookXml.matchAll(/<sheet\b([^>]*)\/?\s*>/gi)) {
     const name = decodeXml(attribute(match[1], 'name') ?? 'Sheet')
     const relId = attribute(match[1], 'id')
     if (!relId) continue
-    const target = relTargets.get(relId)
+    const target = relTargets.get(relId)?.target
     if (!target) continue
-    const normalized = target.startsWith('xl/') ? target : `xl/${target.replace(/^\.\//, '')}`
+    const normalized = resolvePackagePath('xl/workbook.xml', target)
     const xml = sheetXmlByPath.get(normalized)
     if (xml) sheets.push({ name, rows:parseXlsxSheetXml(xml, sharedStrings) })
   }
