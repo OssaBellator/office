@@ -34,6 +34,23 @@ test('DOCX import becomes editable semantic document blocks with Word and Google
   assert.equal(plan.commands[2].block.text,'Body text')
 })
 
+test('DOCX tables become structured Frame Data instead of leaking cell text into document paragraphs',async()=>{
+  const bytes=zip({
+    'word/document.xml':'<w:document><w:body><w:p><w:r><w:t>Executive summary</w:t></w:r></w:p><w:tbl><w:tr><w:tc><w:p><w:r><w:t>Market</w:t></w:r></w:p></w:tc><w:tc><w:p><w:r><w:t>Revenue</w:t></w:r></w:p></w:tc></w:tr><w:tr><w:tc><w:p><w:r><w:t>APAC</w:t></w:r></w:p></w:tc><w:tc><w:p><w:r><w:t>12.5</w:t></w:r></w:p></w:tc></w:tr></w:tbl><w:p><w:r><w:t>Closing recommendation</w:t></w:r></w:p></w:body></w:document>',
+  },{deflate:true})
+  const plan=await planDocxImport(cloneSeedWorkspace(),bytes,'board-note.docx')
+  const paragraphs=plan.commands.filter((command)=>command.type==='document.block.insert')
+  assert.deepEqual(paragraphs.map((command)=>command.block.text),['Executive summary','Closing recommendation'])
+  const tableCommand=plan.commands.find((command)=>command.type==='data.imported.replace')
+  assert.ok(tableCommand)
+  const table=tableCommand.tables.at(-1)
+  assert.equal(table.label,'Document table 1')
+  assert.deepEqual(table.columns.map((column)=>column.label),['Market','Revenue'])
+  assert.equal(table.rows[0].values.market,'APAC')
+  assert.equal(table.rows[0].values.revenue,'12.5')
+  assert.equal(plan.warnings.some((warning)=>/document table/.test(warning)),true)
+})
+
 test('PPTX import follows presentation relationship order and resolves slide notes',async()=>{
   const bytes=zip({
     'ppt/presentation.xml':'<p:presentation><p:sldIdLst><p:sldId id="256" r:id="rId2"/><p:sldId id="257" r:id="rId1"/></p:sldIdLst></p:presentation>',
@@ -70,6 +87,22 @@ test('XLSX import maps compatible actual and plan sheets to semantic row updates
   assert.equal(plan.warnings.some((warning)=>/cached values/.test(warning)),true)
 })
 
+test('recognized Excel sheets keep foreign columns while also updating the live semantic model',async()=>{
+  const bytes=zip({
+    'xl/workbook.xml':'<workbook><sheets><sheet name="Actuals" sheetId="1" r:id="rId1"/></sheets></workbook>',
+    'xl/_rels/workbook.xml.rels':'<Relationships><Relationship Id="rId1" Target="worksheets/sheet1.xml"/></Relationships>',
+    'xl/worksheets/sheet1.xml':'<worksheet><sheetData><row><c r="A1" t="inlineStr"><is><t>Region</t></is></c><c r="B1" t="inlineStr"><is><t>Revenue</t></is></c><c r="C1" t="inlineStr"><is><t>Growth</t></is></c><c r="D1" t="inlineStr"><is><t>Margin</t></is></c><c r="E1" t="inlineStr"><is><t>Executive note</t></is></c></row><row><c r="A2" t="inlineStr"><is><t>APAC</t></is></c><c r="B2"><v>11</v></c><c r="C2"><v>0.31</v></c><c r="D2"><v>0.68</v></c><c r="E2" t="inlineStr"><is><t>Partner-led upside</t></is></c></row></sheetData></worksheet>',
+  },{deflate:true})
+  const plan=await planXlsxImport(cloneSeedWorkspace(),bytes,'actuals-with-notes.xlsx')
+  assert.equal(plan.commands.some((command)=>command.type==='region.update'&&command.regionId==='apac'&&command.field==='revenue'&&command.value===11),true)
+  const imported=plan.commands.find((command)=>command.type==='data.imported.replace')
+  assert.ok(imported)
+  const table=imported.tables.at(-1)
+  assert.equal(table.columns.some((column)=>column.label==='Executive note'),true)
+  assert.equal(table.rows[0].values['executive-note'],'Partner-led upside')
+  assert.equal(plan.warnings.some((warning)=>/foreign columns or schemas/.test(warning)),true)
+})
+
 test('unrecognized Excel or Google Sheets tabs are retained as generic Frame Data tables',async()=>{
   const bytes=zip({
     'xl/workbook.xml':'<workbook><sheets><sheet name="Pipeline" sheetId="1" r:id="rId1"/></sheets></workbook>',
@@ -80,7 +113,7 @@ test('unrecognized Excel or Google Sheets tabs are retained as generic Frame Dat
   const command=plan.commands.find((item)=>item.type==='data.imported.replace')
   assert.ok(command);assert.equal(command.tables.at(-1).label,'Pipeline')
   assert.equal(command.tables.at(-1).rows[0].values.arr,2.4)
-  assert.equal(plan.warnings.some((warning)=>/generic Frame Data tables/.test(warning)),true)
+  assert.equal(plan.warnings.some((warning)=>/generic Frame Data/.test(warning)),true)
 })
 
 test('Google pointer files are rejected with an export instruction instead of being treated as content',async()=>{
