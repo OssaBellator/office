@@ -49,7 +49,7 @@ function defaultSemanticDocument(workspace: WorkspaceState): SemanticDocumentSta
     blocks: [
       { id: 'block:opportunity', type: 'paragraph', text: workspace.document.body },
       { id: 'block:growth-claim', type: 'claim', claimId: 'claim:growth-leader' },
-      { id: 'block:business-snapshot', type: 'metric-embed', metricIds: ['revenue', 'growth', 'margin', 'planRevenue', 'variance', 'attainment'], label: 'Business snapshot' },
+      { id: 'block:business-snapshot', type: 'metric-embed', metricIds: ['revenue', 'growth', 'margin', 'planRevenue', 'variance'], label: 'Business snapshot' },
       { id: 'block:launch-decision', type: 'decision-embed', decisionId: 'launch' },
     ],
     claims: [{
