@@ -6,6 +6,7 @@ import {
   planSchema,
   regionsSchema,
   updatePlanField,
+  workspaceTables,
   setDecisionStatus,
   updateRegionField,
   type ChangeEvent,
@@ -13,7 +14,7 @@ import {
   type WorkspaceMutationResult,
   type WorkspaceState,
 } from './model.ts'
-import { parseSemanticFormula } from './formulas.ts'
+import { evaluateSemanticExpression } from './expressions.ts'
 
 export type VersionedWorkspaceCommand =
   | WorkspaceCommand
@@ -31,32 +32,35 @@ function syncMetricFormulaEdges(workspace: WorkspaceState, metricId: string, for
   const metricObjectId = `metric:${metricId}`
   const retained = workspace.graph.edges.filter((edge) => !(edge.to === metricObjectId && edge.relation === 'derives'))
   if (!formula) return { ...workspace, graph: { ...workspace.graph, edges: retained } }
-  const parsed = parseSemanticFormula(formula)
+  const analysis = evaluateSemanticExpression(formula, workspaceTables(workspace))
   const metric = workspace.metrics.find((candidate) => candidate.id === metricId)
-  const description = `${parsed.tableId}.${parsed.fieldId} contributes to ${metric?.label ?? metricId}`
-  const sourceIds = parsed.tableId === 'Regions'
-    ? workspace.regions.map((row) => `region:${row.id}`)
-    : parsed.tableId === 'Plan'
-      ? workspace.plans.map((row) => `plan:${row.id}`)
-      : []
-  const derived = sourceIds.map((from) => ({ from, to: metricObjectId, relation: 'derives' as const, description }))
+  const sourceIds = new Set<string>()
+  for (const term of analysis.terms) {
+    if (term.tableId === 'Regions') workspace.regions.forEach((row) => sourceIds.add(`region:${row.id}`))
+    if (term.tableId === 'Plan') workspace.plans.forEach((row) => sourceIds.add(`plan:${row.id}`))
+  }
+  const description = `${analysis.terms.map((term) => `${term.tableId}.${term.fieldId}`).join(' + ')} contributes to ${metric?.label ?? metricId}`
+  const derived = [...sourceIds].map((from) => ({ from, to: metricObjectId, relation: 'derives' as const, description }))
   return { ...workspace, graph: { ...workspace.graph, edges: [...retained, ...derived] } }
 }
 
 export function validateMetricFormula(workspace: WorkspaceState, metricId: string, formula: string) {
   const metric = workspace.metrics.find((candidate) => candidate.id === metricId)
   if (!metric) throw new Error(`Unknown metric: ${metricId}`)
-  const parsed = parseSemanticFormula(formula)
-  const schema = [regionsSchema, planSchema].find((candidate) => candidate.id === parsed.tableId)
-  if (!schema) throw new Error(`Unknown table: ${parsed.tableId}`)
-  const field = schema.fields.find((candidate) => candidate.id === parsed.fieldId)
-  if (!field) throw new Error(`Unknown field: ${parsed.tableId}.${parsed.fieldId}`)
-  if (parsed.fn === 'COUNT') {
-    if (metric.format !== 'number') throw new Error(`COUNT produces a number and cannot define ${metric.format} metric ${metric.label}`)
-  } else if (metric.format === 'currency' && field.type !== 'currency') throw new Error(`${metric.label} is currency and requires a currency field`)
-  else if (metric.format === 'percent' && field.type !== 'percent') throw new Error(`${metric.label} is percent and requires a percent field`)
-  else if (field.type === 'text') throw new Error(`${parsed.fn} requires a numeric field`)
-  return evaluateMetric({ ...workspace, metrics: workspace.metrics.map((candidate) => candidate.id === metricId ? { ...candidate, formula } : candidate) }, metricId)
+  const analysis = evaluateSemanticExpression(formula, workspaceTables(workspace))
+  if (analysis.terms.length === 0) throw new Error('Metric formula must reference at least one semantic field')
+  for (const parsed of analysis.terms) {
+    const schema = [regionsSchema, planSchema].find((candidate) => candidate.id === parsed.tableId)
+    if (!schema) throw new Error(`Unknown table: ${parsed.tableId}`)
+    const field = schema.fields.find((candidate) => candidate.id === parsed.fieldId)
+    if (!field) throw new Error(`Unknown field: ${parsed.tableId}.${parsed.fieldId}`)
+    if (parsed.fn === 'COUNT') {
+      if (metric.format !== 'number') throw new Error(`COUNT produces a number and cannot define ${metric.format} metric ${metric.label}`)
+    } else if (metric.format === 'currency' && field.type !== 'currency') throw new Error(`${metric.label} is currency and requires a currency field in every term`)
+    else if (metric.format === 'percent' && field.type !== 'percent') throw new Error(`${metric.label} is percent and requires a percent field in every term`)
+    else if (field.type === 'text') throw new Error(`${parsed.fn} requires a numeric field`)
+  }
+  return analysis
 }
 
 function updateMetricFormula(workspace: WorkspaceState, metricId: string, formula: string | null, fallbackValue: number | undefined, changedAt = 'just now'): WorkspaceMutationResult {
