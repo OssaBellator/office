@@ -3,7 +3,9 @@ import {
   evaluateMetric,
   getDownstreamObjectIds,
   getWorkspaceImpacts,
+  planSchema,
   regionsSchema,
+  updatePlanField,
   setDecisionStatus,
   updateRegionField,
   type ChangeEvent,
@@ -30,10 +32,14 @@ function syncMetricFormulaEdges(workspace: WorkspaceState, metricId: string, for
   const retained = workspace.graph.edges.filter((edge) => !(edge.to === metricObjectId && edge.relation === 'derives'))
   if (!formula) return { ...workspace, graph: { ...workspace.graph, edges: retained } }
   const parsed = parseSemanticFormula(formula)
-  if (parsed.tableId !== 'Regions') return { ...workspace, graph: { ...workspace.graph, edges: retained } }
   const metric = workspace.metrics.find((candidate) => candidate.id === metricId)
   const description = `${parsed.tableId}.${parsed.fieldId} contributes to ${metric?.label ?? metricId}`
-  const derived = workspace.regions.map((region) => ({ from: `region:${region.id}`, to: metricObjectId, relation: 'derives' as const, description }))
+  const sourceIds = parsed.tableId === 'Regions'
+    ? workspace.regions.map((row) => `region:${row.id}`)
+    : parsed.tableId === 'Plan'
+      ? workspace.plans.map((row) => `plan:${row.id}`)
+      : []
+  const derived = sourceIds.map((from) => ({ from, to: metricObjectId, relation: 'derives' as const, description }))
   return { ...workspace, graph: { ...workspace.graph, edges: [...retained, ...derived] } }
 }
 
@@ -41,8 +47,9 @@ export function validateMetricFormula(workspace: WorkspaceState, metricId: strin
   const metric = workspace.metrics.find((candidate) => candidate.id === metricId)
   if (!metric) throw new Error(`Unknown metric: ${metricId}`)
   const parsed = parseSemanticFormula(formula)
-  if (parsed.tableId !== regionsSchema.id) throw new Error(`Unknown table: ${parsed.tableId}`)
-  const field = regionsSchema.fields.find((candidate) => candidate.id === parsed.fieldId)
+  const schema = [regionsSchema, planSchema].find((candidate) => candidate.id === parsed.tableId)
+  if (!schema) throw new Error(`Unknown table: ${parsed.tableId}`)
+  const field = schema.fields.find((candidate) => candidate.id === parsed.fieldId)
   if (!field) throw new Error(`Unknown field: ${parsed.tableId}.${parsed.fieldId}`)
   if (parsed.fn === 'COUNT') {
     if (metric.format !== 'number') throw new Error(`COUNT produces a number and cannot define ${metric.format} metric ${metric.label}`)
@@ -67,6 +74,7 @@ function updateMetricFormula(workspace: WorkspaceState, metricId: string, formul
 export function runVersionedCommand(workspace: WorkspaceState, command: VersionedWorkspaceCommand): WorkspaceMutationResult {
   switch (command.type) {
     case 'region.update': return updateRegionField(workspace, command.regionId, command.field, command.value, command.changedAt)
+    case 'plan.update': return updatePlanField(workspace, command.planId, command.field, command.value, command.changedAt)
     case 'decision.status': return setDecisionStatus(workspace, command.decisionId, command.status, command.changedAt)
     case 'document.append': return appendDocumentText(workspace, command.text, command.changedAt)
     case 'document.update': {
@@ -86,6 +94,7 @@ export function runVersionedCommand(workspace: WorkspaceState, command: Versione
 export function versionedCommandIsNoop(workspace: WorkspaceState, command: VersionedWorkspaceCommand) {
   switch (command.type) {
     case 'region.update': return workspace.regions.find((row) => row.id === command.regionId)?.[command.field] === command.value
+    case 'plan.update': return workspace.plans.find((row) => row.id === command.planId)?.[command.field] === command.value
     case 'decision.status': return workspace.decisions.find((decision) => decision.id === command.decisionId)?.status === command.status
     case 'document.append': return command.text.trim().length === 0
     case 'document.update': return workspace.document[command.field] === command.value
