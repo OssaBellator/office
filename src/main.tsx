@@ -10,6 +10,7 @@ import './command-intent.css'
 import './local-tools.css'
 import './plan-model.css'
 import './semantic-document.css'
+import './relationship-chart.css'
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
