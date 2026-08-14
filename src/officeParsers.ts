@@ -3,7 +3,7 @@ export type ImportedDocumentBlock = {
   text: string
 }
 
-export type ImportedSlide = { title: string; body: string[]; note: string }
+export type ImportedSlide = { title: string; body: string[]; note: string; flattenedTables: number }
 export type ImportedSheet = { name: string; rows: Array<Array<string | number | null>> }
 
 function decodeXml(value: string) {
@@ -100,8 +100,8 @@ function parseDocxNumbering(xml: string | null) {
 
 function docxStyleKind(style: string): ImportedDocumentBlock['kind'] | null {
   const normalized = style.replace(/[\s_-]+/g, '').toLowerCase()
-  const heading = normalized.match(/^heading([1-3])$/)
-  if (heading) return `heading-${heading[1]}` as ImportedDocumentBlock['kind']
+  const heading = normalized.match(/^heading(\d+)$/)
+  if (heading) return `heading-${Math.min(3, Math.max(1, Number(heading[1])))}` as ImportedDocumentBlock['kind']
   if (normalized === 'title') return 'heading-1'
   if (normalized === 'subtitle') return 'heading-2'
   return null
@@ -153,6 +153,31 @@ function slideParagraphs(fragment: string) {
   return text ? [text] : []
 }
 
+function slideTableRows(fragment:string) {
+  const rows:string[]=[]
+  for(const rowMatch of fragment.matchAll(/<a:tr\b[^>]*>([\s\S]*?)<\/a:tr>/gi)){
+    const cells:string[]=[]
+    for(const cellMatch of rowMatch[1].matchAll(/<a:tc\b[^>]*>([\s\S]*?)<\/a:tc>/gi)){
+      const text=slideParagraphs(cellMatch[1]).join(' ').trim()
+      cells.push(text)
+    }
+    if(cells.some(Boolean))rows.push(cells.join(' | '))
+  }
+  return rows
+}
+
+function presentationNoteText(notesXml:string|null) {
+  if(!notesXml)return ''
+  const lines:string[]=[]
+  for(const match of notesXml.matchAll(/<p:sp\b[^>]*>([\s\S]*?)<\/p:sp>/gi)){
+    const shape=match[1]
+    if(/<p:ph\b[^>]*type="(?:sldNum|dt|hdr|ftr)"/i.test(shape))continue
+    lines.push(...slideParagraphs(shape))
+  }
+  if(lines.length)return lines.join(' · ')
+  return tagTexts(notesXml,'t').map((value)=>value.trim()).filter(Boolean).join(' · ')
+}
+
 export function parsePptxSlideXml(slideXml: string, notesXml: string | null = null): ImportedSlide {
   const titleCandidates: string[] = []
   const body: string[] = []
@@ -165,8 +190,13 @@ export function parsePptxSlideXml(slideXml: string, notesXml: string | null = nu
     else body.push(...lines)
   }
   if (!titleCandidates.length && body.length) titleCandidates.push(body.shift()!)
-  const noteLines = notesXml ? tagTexts(notesXml, 't').map((value) => value.trim()).filter(Boolean) : []
-  return { title:titleCandidates.join(' ').trim() || 'Imported slide', body, note:noteLines.join(' · ') }
+  let flattenedTables=0
+  for(const match of slideXml.matchAll(/<p:graphicFrame\b[^>]*>([\s\S]*?)<\/p:graphicFrame>/gi)){
+    if(!/<a:tbl\b/i.test(match[1]))continue
+    flattenedTables+=1
+    body.push(...slideTableRows(match[1]))
+  }
+  return { title:titleCandidates.join(' ').trim() || 'Imported slide', body, note:presentationNoteText(notesXml), flattenedTables }
 }
 
 function columnIndex(reference: string) {
