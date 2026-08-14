@@ -20,10 +20,12 @@ import {
   createWorkspaceSession,
   executeWorkspaceCommand,
   hydrateWorkspace,
+  previewWorkspaceCommand,
   redoWorkspaceSession,
   undoWorkspaceSession,
   type RegionRow,
   type Surface,
+  type WorkspaceCommand,
   type WorkspaceSession,
   type WorkspaceState,
 } from './model'
@@ -72,8 +74,10 @@ export default function WorkspaceApp() {
   const [surface, setSurface] = useState<Surface>('docs')
   const [session, setSession] = useState<WorkspaceSession>(loadSession)
   const [commandOpen, setCommandOpen] = useState(false)
+  const [pendingCommand, setPendingCommand] = useState<WorkspaceCommand | null>(null)
   const [contextOpen, setContextOpen] = useState(true)
   const workspace = session.present
+  const commandPreview = pendingCommand ? previewWorkspaceCommand(workspace, pendingCommand) : null
 
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(workspace))
@@ -86,6 +90,7 @@ export default function WorkspaceApp() {
 
       if (modifier && key === 'k') {
         event.preventDefault()
+        setPendingCommand(null)
         setCommandOpen((value) => !value)
         return
       }
@@ -96,7 +101,10 @@ export default function WorkspaceApp() {
         return
       }
 
-      if (event.key === 'Escape') setCommandOpen(false)
+      if (event.key === 'Escape') {
+        setPendingCommand(null)
+        setCommandOpen(false)
+      }
     }
 
     window.addEventListener('keydown', onKeyDown)
@@ -123,25 +131,41 @@ export default function WorkspaceApp() {
     }))
   }
 
-  const approveDecision = () => {
-    setSession((current) => executeWorkspaceCommand(current, {
+  const stageApproval = () => {
+    setPendingCommand({
       type: 'decision.status',
       decisionId: 'launch',
       status: 'approved',
-    }))
+    })
+  }
+
+  const stageEvidence = () => {
+    setPendingCommand({
+      type: 'document.append',
+      text: 'Evidence to validate: APAC growth is currently 31%, the strongest regional rate in the model.',
+    })
+  }
+
+  const applyPendingCommand = () => {
+    if (!pendingCommand) return
+    setSession((current) => executeWorkspaceCommand(current, pendingCommand))
+    setPendingCommand(null)
     setCommandOpen(false)
+  }
+
+  const closeCommandPalette = () => {
+    setPendingCommand(null)
+    setCommandOpen(false)
+  }
+
+  const openCommandPalette = () => {
+    setPendingCommand(null)
+    setCommandOpen(true)
   }
 
   const restoreDemo = () => {
     setSession(createWorkspaceSession(cloneSeedWorkspace()))
-    setCommandOpen(false)
-  }
-
-  const addEvidence = () => {
-    setSession((current) => executeWorkspaceCommand(current, {
-      type: 'document.append',
-      text: 'Evidence to validate: APAC growth is currently 31%, the strongest regional rate in the model.',
-    }))
+    setPendingCommand(null)
     setCommandOpen(false)
   }
 
@@ -153,7 +177,7 @@ export default function WorkspaceApp() {
           <div className="brand-name">Frame</div>
         </div>
 
-        <button className="search-button" onClick={() => setCommandOpen(true)}>
+        <button className="search-button" onClick={openCommandPalette}>
           <Search size={15} />
           <span>Search or ask</span>
           <kbd>⌘ K</kbd>
@@ -239,14 +263,17 @@ export default function WorkspaceApp() {
         </div>
       </main>
 
-      <button className="ai-fab" onClick={() => setCommandOpen(true)} aria-label="Open Frame command palette"><Sparkles size={18} /></button>
+      <button className="ai-fab" onClick={openCommandPalette} aria-label="Open Frame command palette"><Sparkles size={18} /></button>
 
       {commandOpen && (
         <CommandPalette
           surface={surface}
-          onClose={() => setCommandOpen(false)}
-          onAddEvidence={addEvidence}
-          onApprove={approveDecision}
+          preview={commandPreview}
+          onClose={closeCommandPalette}
+          onStageEvidence={stageEvidence}
+          onStageApproval={stageApproval}
+          onApplyPreview={applyPendingCommand}
+          onCancelPreview={() => setPendingCommand(null)}
           onRestore={restoreDemo}
           onSwitch={setSurface}
         />
