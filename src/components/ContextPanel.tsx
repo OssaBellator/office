@@ -1,13 +1,16 @@
 import { CheckCircle2, Clock3, Database, FileText, Presentation, Table2, X } from 'lucide-react'
-import { formatMetric, type Surface, type WorkspaceState } from '../model'
+import { formatMetric, type Surface, type WorkspaceState, type WorkspaceTransaction } from '../model'
+import { previewWorkspaceCommand } from '../commandPreview'
 
 export function ContextPanel({
   workspace,
   surface,
+  transactions,
   onClose,
 }: {
   workspace: WorkspaceState
   surface: Surface
+  transactions: WorkspaceTransaction[]
   onClose: () => void
 }) {
   const revenue = workspace.metrics.find((metric) => metric.id === 'revenue')!
@@ -43,6 +46,26 @@ export function ContextPanel({
             <div><dt>Updated</dt><dd>{revenue.updatedAt}</dd></div>
             <div><dt>Used in</dt><dd>Strategy · Performance scene</dd></div>
           </dl>
+        </div>
+      </div>
+
+      <div className="context-section">
+        <span className="context-label">Semantic history</span>
+        <div className="history-list">
+          {transactions.length === 0 ? (
+            <div className="history-empty">No structured transactions yet</div>
+          ) : transactions.slice(-4).reverse().map((transaction) => {
+            const preview = previewWorkspaceCommand(transaction.before, transaction.command)
+            return (
+              <div className="history-entry" key={transaction.id}>
+                <span className="history-marker" />
+                <div>
+                  <strong>{transaction.summary}</strong>
+                  <span>{preview.diffs.length} semantic change{preview.diffs.length === 1 ? '' : 's'} · {preview.impacts.length} downstream</span>
+                </div>
+              </div>
+            )
+          })}
         </div>
       </div>
 
