@@ -10,6 +10,7 @@ import { makeGrowthEvidenceInsertion } from './semanticDocument'
 import { exportWorkspaceSession, importWorkspaceSession } from './workspaceIO'
 import { exportPlanCsv, exportPresentationMarkdown, exportRegionsCsv, exportStrategyMarkdown } from './compatibilityExports'
 import { planPlanCsvImport, planRegionsCsvImport } from './csvImportPlanner'
+import { planOfficeImport } from './officeImportPlanner'
 import { approveAutomation, executeGovernedAutomation, planGovernedAutomation, type GovernedAutomationPlan } from './governedAutomation'
 import { locateWorkspaceObject } from './workspaceNavigation'
 import { assessWorkspaceReadiness } from './workspaceDiagnostics'
@@ -203,6 +204,28 @@ export default function WorkspaceApp() {
     }
     input.click()
   }
+
+  const stageOfficeImport = () => {
+    const input = document.createElement('input')
+    input.type = 'file'
+    input.accept = '.docx,.pptx,.xlsx,.gdoc,.gslides,.gsheet,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.presentationml.presentation,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    input.onchange = async () => {
+      const file = input.files?.[0]
+      if (!file) return
+      try {
+        const plan = await planOfficeImport(workspace, await file.arrayBuffer(), file.name)
+        if (plan.commands.length === 0) { setTransferMode(null); setWorkspaceNotice(`${file.name} already matches the workspace`); return }
+        setPendingAutomation(planGovernedAutomation(session, 'owner', plan.commands))
+        setTransferMode(null)
+        const warning = plan.warnings.length ? ` · ${plan.warnings.length} warning${plan.warnings.length === 1 ? '' : 's'}` : ''
+        setWorkspaceNotice(`Previewing ${plan.importedItems} imported item${plan.importedItems === 1 ? '' : 's'} from ${file.name}${warning}`)
+      } catch (error) {
+        setWorkspaceNotice(error instanceof Error ? error.message : 'Could not import Office file')
+      }
+    }
+    input.click()
+  }
+
   const applyPendingAutomation = () => {
     if (!pendingAutomation) return
     try {
@@ -267,7 +290,7 @@ export default function WorkspaceApp() {
             <span className="saved-state"><Check size={13} /> {workspaceNotice ?? `Saved locally · v${session.past.at(-1)?.revision ?? 0}`}</span>
             <div className="history-actions" aria-label="Semantic history controls">
               <button disabled={session.past.length === 0} onClick={() => setSession((current) => undoVersionedWorkspaceSession(current))} title={session.past.at(-1) ? `Undo: ${session.past.at(-1)?.summary}` : 'Nothing to undo'}>↶ <span>Undo</span></button>
-              <button disabled={session.future.length === 0} onClick={() => setSession((current) => redoVersionedWorkspaceSession(current))} title={session.future[0] ? `Redo: ${session.future[0].summary}` : 'Nothing to redo'}>↷ <span>Redo</span></button>
+              <button disabled={session.future.length === 0} onClick={() => setSession((current) => redoVersionedWorkspaceSession(current))} title={session.future[0] ? `Redo: ${session.future[0]?.summary}` : 'Nothing to redo'}>↷ <span>Redo</span></button>
             </div>
             <button className="secondary-button history-open-button" onClick={() => setHistoryOpen(true)} title="Semantic history (Cmd/Ctrl + Shift + H)"><Clock3 size={14} /> History</button>
             <button className="icon-button" aria-label="Toggle context" onClick={() => setContextOpen((value) => !value)}><Grid3X3 size={16} /></button>
@@ -292,8 +315,8 @@ export default function WorkspaceApp() {
       {historyOpen && <HistoryBrowser session={session} onClose={() => setHistoryOpen(false)} onRevert={revertTransaction} />}
       {presentationOpen && <PresentationPlayer workspace={workspace} onClose={() => setPresentationOpen(false)} />}
       {presentationGateOpen && <PresentationReadinessDialog readiness={readiness} reviewGate={reviewGate} onClose={() => setPresentationGateOpen(false)} onOpenContext={() => { setPresentationGateOpen(false); setContextOpen(true) }} onPresentAnyway={() => { setPresentationGateOpen(false); setPresentationOpen(true) }} />}
-      {transferMode && <WorkspaceTransferDialog mode={transferMode} onClose={() => setTransferMode(null)} onExportBackup={exportBackup} onExportStrategy={exportStrategy} onExportBoard={exportBoard} onExportRegions={exportRegions} onExportPlan={exportPlan} onExportAll={exportPortableSet} onImportBackup={importBackup} onImportRegions={() => stageCsvImport('regions')} onImportPlan={() => stageCsvImport('plan')} />}
-      {pendingAutomation && <BatchPreviewModal plan={pendingAutomation.plan} governance={pendingAutomation.governance} title="Import spreadsheet changes" onApply={applyPendingAutomation} onClose={() => setPendingAutomation(null)} />}
+      {transferMode && <WorkspaceTransferDialog mode={transferMode} onClose={() => setTransferMode(null)} onExportBackup={exportBackup} onExportStrategy={exportStrategy} onExportBoard={exportBoard} onExportRegions={exportRegions} onExportPlan={exportPlan} onExportAll={exportPortableSet} onImportBackup={importBackup} onImportRegions={() => stageCsvImport('regions')} onImportPlan={() => stageCsvImport('plan')} onImportOffice={stageOfficeImport} />}
+      {pendingAutomation && <BatchPreviewModal plan={pendingAutomation.plan} governance={pendingAutomation.governance} title="Import semantic changes" onApply={applyPendingAutomation} onClose={() => setPendingAutomation(null)} />}
     </div>
   )
 }
