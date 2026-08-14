@@ -1,0 +1,7 @@
+.history-list { display: flex; flex-direction: column; gap: 1px; }
+.history-entry { min-height: 39px; display: grid; grid-template-columns: 12px minmax(0,1fr); gap: 5px; align-items: start; padding: 5px 0; }
+.history-marker { width: 6px; height: 6px; margin-top: 4px; border-radius: 50%; background: #789486; box-shadow: 0 0 0 3px #edf2ef; }
+.history-entry strong, .history-entry span { display: block; }
+.history-entry strong { color: #50554e; font-size: 9px; font-weight: 620; line-height: 1.35; }
+.history-entry div > span { margin-top: 2px; color: #989c95; font-size: 7.8px; line-height: 1.35; }
+.history-empty { color: #999d96; font-size: 8.5px; }
