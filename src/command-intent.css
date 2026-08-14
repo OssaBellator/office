@@ -1,0 +1,6 @@
+.command-context small { margin-left:auto; color:#8a78a7; font-size:7.5px; }
+.command-error { margin:10px 12px 0; padding:8px 10px; border:1px solid #e5c4be; border-radius:7px; background:#fbefed; color:#92594f; font-size:9px; }
+.command-hints { padding:10px 12px 14px; display:flex; flex-wrap:wrap; gap:6px; }
+.command-hints > span { width:100%; padding:3px 1px; color:#999d96; letter-spacing:.09em; font-size:7.5px; font-weight:750; }
+.command-hints button { padding:6px 8px; border:1px solid var(--line); border-radius:7px; background:white; color:#60665e; font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:8px; }
+.command-hints button:hover { border-color:#bfc7c1; background:#f6f8f6; }
