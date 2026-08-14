@@ -145,6 +145,7 @@ function hasExtraColumns(sheet:ImportedSheet, known:Set<string>) {
   const header=sheetHeader(sheet);if(!header)return false
   return header.headers.some((value)=>value&&!known.has(value))
 }
+function hasPreservedFormulas(sheet:ImportedSheet){return sheet.formulas?.some((row)=>row.some((formula)=>Boolean(formula?.trim())))??false}
 
 export async function planXlsxImport(workspace: WorkspaceState, input: ArrayBuffer | Uint8Array, fileName: string): Promise<OfficeImportPlan> {
   const entries=await readOfficeZip(input)
@@ -164,17 +165,17 @@ export async function planXlsxImport(workspace: WorkspaceState, input: ArrayBuff
     const planMatched=actualMatched?0:planPlanSheet(workspace,sheet,commands,warnings)
     const sheetMatched=actualMatched+planMatched
     const known=actualMatched?new Set(['region','revenue','growth','margin']):planMatched?new Set(['region','revenue']):new Set<string>()
-    const retainGeneric=!sheetMatched||hasExtraColumns(sheet,known)
+    const retainGeneric=!sheetMatched||hasExtraColumns(sheet,known)||hasPreservedFormulas(sheet)
     if(sheetMatched){matched+=sheetMatched;importedItems+=sheetMatched}
     if(retainGeneric){const table=importedTableFromSheet(sheet,fileName,`${importSuffix}-${index+1}`);if(table){genericTables.push(table);importedItems+=table.rows.length||1}}
   }
   if(genericTables.length)commands.push({type:'data.imported.replace',tables:[...getImportedTables(workspace),...genericTables]})
-  if(hasFormula)warnings.push('Excel/Google Sheets formulas currently import through their cached values; Frame does not translate arbitrary spreadsheet formulas yet.')
+  if(hasFormula)warnings.push('Excel/Google Sheets formula text and cached values are preserved in imported Data tables. Frame does not execute arbitrary spreadsheet formulas yet; live finance fields use the cached values until translated into Frame formulas.')
   if(hasPath(entries,/^xl\/styles\.xml$/i))warnings.push('Excel cell formatting and date/number display formats are not translated yet; Frame imports stored cell values and inferred column types.')
   if(hasMergedCells)warnings.push('Merged Excel cells are flattened to their stored cell values; merge geometry is not preserved.')
   if(hasPath(entries,/^xl\/comments(?:\d+)?\.xml$/i))warnings.push('Excel cell comments and notes are not imported yet.')
   if(hasPath(entries,/^xl\/(?:externalLinks|connections)\//i)||hasPath(entries,/^xl\/connections\.xml$/i))warnings.push('External workbook links and data connections are not imported or refreshed.')
-  if(genericTables.length)warnings.push(`${genericTables.length} worksheet${genericTables.length===1?'':'s'} ${genericTables.length===1?'was':'were'} retained as generic Frame Data to preserve foreign columns or schemas.`)
+  if(genericTables.length)warnings.push(`${genericTables.length} worksheet${genericTables.length===1?'':'s'} ${genericTables.length===1?'was':'were'} retained as generic Frame Data to preserve foreign columns, schemas, or formulas.`)
   if(!matched&&!genericTables.length)throw new Error('Workbook contains no non-empty worksheets that Frame can import.')
   return {kind:'xlsx',label:`${fileName} · ${sheets.length} sheets`,commands,warnings,importedItems}
 }
