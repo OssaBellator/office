@@ -35,7 +35,7 @@ export async function planDocxImport(workspace: WorkspaceState, input: ArrayBuff
   const commands: VersionedWorkspaceCommand[] = blocks.map((block,index) => ({
     type:'document.block.insert',
     index:startIndex+index,
-    block:{ id:`block:import:${importSuffix}:${index+1}`, type:'paragraph', text:block.text, style:(block.kind === 'paragraph' ? 'body' : block.kind) as SemanticParagraphStyle },
+    block:{ id:`block:import:${importSuffix}:${index+1}`, type:'paragraph', text:block.text, style:(block.kind === 'paragraph' ? 'body' : block.kind) as SemanticParagraphStyle, source:fileName },
   }))
   const importedTables = tables.flatMap((sheet,index) => importedTableFromSheet(sheet,fileName,`${importSuffix}-doc-table-${index+1}`) ?? [])
   if(importedTables.length)commands.push({type:'data.imported.replace',tables:[...getImportedTables(workspace),...importedTables]})
