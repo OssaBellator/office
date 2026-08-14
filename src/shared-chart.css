@@ -1,0 +1,11 @@
+.relationship-definition { margin-top:14px; padding-top:11px; border-top:1px solid var(--line); }
+.relationship-definition strong,.relationship-definition code,.relationship-definition small { display:block; }
+.relationship-definition strong { margin-top:6px; font-size:9.5px; }
+.relationship-definition code { margin-top:6px; padding:5px 6px; border-radius:5px; background:#f2f5f2; color:#426052; font-size:7.8px; }
+.relationship-definition small { margin-top:5px; color:#91968e; font-size:7.5px; }
+.slide-chart.grouped-chart { gap:8px; }
+.slide-bar-wrap.grouped { gap:5px; }
+.slide-grouped-bars { width:100%; height:100%; display:flex; align-items:end; justify-content:center; gap:3px; }
+.slide-grouped-bars .slide-bar { width:min(12px,42%); }
+.slide-grouped-bars .slide-bar.actual { background:#668776; }
+.slide-grouped-bars .slide-bar.plan { background:#b7a9ca; }
