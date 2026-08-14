@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { parsePaletteIntent } from '../src/intent.ts'
 import { cloneSeedWorkspace } from '../src/model.ts'
+import { createVersionedWorkspaceSession, executeVersionedWorkspaceCommand } from '../src/versioning.ts'
 
 test('palette intent parses regional metric edits', () => {
   const workspace = cloneSeedWorkspace()
@@ -43,12 +44,28 @@ test('palette intent supports semantic document slash insertion', () => {
 })
 
 test('palette intent validates semantic formulas and region names', () => {
-  const workspace = cloneSeedWorkspace()
+  const workspace = createVersionedWorkspaceSession(cloneSeedWorkspace()).present
   const formula = parsePaletteIntent('set revenue formula to SUM(Regions.Revenue WHERE Region = "APAC")', workspace)
   assert.equal(formula.kind, 'command')
   assert.equal(formula.command.formula, 'SUM(Regions.Revenue WHERE Region = "APAC")')
   assert.equal(parsePaletteIntent('set revenue formula to SUM(Regions.Growth)', workspace).kind, 'error')
   assert.equal(parsePaletteIntent('set Moon revenue to 1', workspace).kind, 'error')
+})
+
+test('palette intent supports computed metric creation and safe removal', () => {
+  let workspace = createVersionedWorkspaceSession(cloneSeedWorkspace()).present
+  const create = parsePaletteIntent('create metric High-growth revenue as currency = SUM(Regions.Revenue WHERE Growth >= 20)', workspace)
+  assert.equal(create.kind, 'command')
+  assert.equal(create.command.type, 'metric.create')
+  assert.equal(create.command.metric.id, 'custom-high-growth-revenue')
+  assert.equal(create.command.metric.formula, 'SUM(Regions.Revenue WHERE Growth >= 20)')
+  assert.equal(parsePaletteIntent('create metric Broken KPI as currency = AVERAGE(Regions.Growth)', workspace).kind, 'error')
+  workspace = executeVersionedWorkspaceCommand(createVersionedWorkspaceSession(workspace), create.command).present
+  const remove = parsePaletteIntent('remove metric High-growth revenue', workspace)
+  assert.equal(remove.kind, 'command')
+  assert.equal(remove.command.type, 'metric.remove')
+  assert.equal(remove.command.metricId, 'custom-high-growth-revenue')
+  assert.equal(parsePaletteIntent('remove metric Q2 revenue', workspace).kind, 'error')
 })
 
 test('palette intent supports document title and legacy append commands', () => {
