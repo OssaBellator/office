@@ -70,6 +70,19 @@ test('XLSX import maps compatible actual and plan sheets to semantic row updates
   assert.equal(plan.warnings.some((warning)=>/cached values/.test(warning)),true)
 })
 
+test('unrecognized Excel or Google Sheets tabs are retained as generic Frame Data tables',async()=>{
+  const bytes=zip({
+    'xl/workbook.xml':'<workbook><sheets><sheet name="Pipeline" sheetId="1" r:id="rId1"/></sheets></workbook>',
+    'xl/_rels/workbook.xml.rels':'<Relationships><Relationship Id="rId1" Target="worksheets/sheet1.xml"/></Relationships>',
+    'xl/worksheets/sheet1.xml':'<worksheet><sheetData><row><c r="A1" t="inlineStr"><is><t>Account</t></is></c><c r="B1" t="inlineStr"><is><t>ARR</t></is></c><c r="C1" t="inlineStr"><is><t>Stage</t></is></c></row><row><c r="A2" t="inlineStr"><is><t>Acme</t></is></c><c r="B2"><v>2.4</v></c><c r="C2" t="inlineStr"><is><t>Qualified</t></is></c></row></sheetData></worksheet>',
+  },{deflate:true})
+  const plan=await planXlsxImport(cloneSeedWorkspace(),bytes,'pipeline.xlsx')
+  const command=plan.commands.find((item)=>item.type==='data.imported.replace')
+  assert.ok(command);assert.equal(command.tables.at(-1).label,'Pipeline')
+  assert.equal(command.tables.at(-1).rows[0].values.arr,2.4)
+  assert.equal(plan.warnings.some((warning)=>/generic Frame Data tables/.test(warning)),true)
+})
+
 test('Google pointer files are rejected with an export instruction instead of being treated as content',async()=>{
   const { planOfficeImport }=await import('../src/officeImportPlanner.ts')
   await assert.rejects(()=>planOfficeImport(cloneSeedWorkspace(),new Uint8Array(),'strategy.gdoc'),/File → Download/)
