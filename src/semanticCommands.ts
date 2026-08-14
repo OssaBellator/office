@@ -96,12 +96,12 @@ export function validateMetricFormula(workspace: WorkspaceState, metricId: strin
     if (!schema) throw new Error(`Unknown table: ${parsed.tableId}`)
     const field = schema.fields.find((candidate) => candidate.id === parsed.fieldId)
     if (!field) throw new Error(`Unknown field: ${parsed.tableId}.${parsed.fieldId}`)
-    if (parsed.fn === 'COUNT') {
-      if (metric.format !== 'number') throw new Error(`COUNT produces a number and cannot define ${metric.format} metric ${metric.label}`)
-    } else if (metric.format === 'currency' && field.type !== 'currency') throw new Error(`${metric.label} is currency and requires a currency field in every term`)
-    else if (metric.format === 'percent' && field.type !== 'percent') throw new Error(`${metric.label} is percent and requires a percent field in every term`)
-    else if (field.type === 'text') throw new Error(`${parsed.fn} requires a numeric field`)
+    if (parsed.fn !== 'COUNT' && field.type === 'text') throw new Error(`${parsed.fn} requires a numeric field`)
   }
+  const compatibleDimension = metric.format === 'percent'
+    ? analysis.dimension === 'percent' || analysis.dimension === 'number'
+    : analysis.dimension === metric.format
+  if (!compatibleDimension) throw new Error(`${metric.label} is ${metric.format} but the formula produces ${analysis.dimension}`)
   return analysis
 }
 
