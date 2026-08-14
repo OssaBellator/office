@@ -1,4 +1,5 @@
 import type { WorkspaceState } from './model.ts'
+import { getSemanticDocument } from './semanticDocument.ts'
 
 export type WorkspaceVersionDiff = { objectId: string; label: string; field: string; before: string | number | null; after: string | number | null; change: 'changed' | 'added' | 'removed' }
 function objectLabel(workspace: WorkspaceState, objectId: string) { return workspace.graph.objects.find((object) => object.id === objectId)?.label ?? objectId }
@@ -12,6 +13,27 @@ export function compareWorkspaceStates(before: WorkspaceState, after: WorkspaceS
   const diffs: WorkspaceVersionDiff[] = []
   add(diffs, after, 'workspace', 'title', before.title, after.title)
   for (const field of ['eyebrow','title','summary','body'] as const) add(diffs, after, 'document:strategy', field, before.document[field], after.document[field])
+
+  const beforeSemantic = getSemanticDocument(before), afterSemantic = getSemanticDocument(after)
+  for (const id of new Set([...beforeSemantic.blocks.map((x)=>x.id),...afterSemantic.blocks.map((x)=>x.id)])) {
+    const l=beforeSemantic.blocks.find((x)=>x.id===id),r=afterSemantic.blocks.find((x)=>x.id===id)
+    if(!l||!r){add(diffs,after,id,'block',l?JSON.stringify(l):null,r?JSON.stringify(r):null);continue}
+    add(diffs,after,id,'type',l.type,r.type)
+    if(l.type==='paragraph'&&r.type==='paragraph')add(diffs,after,id,'text',l.text,r.text)
+    else add(diffs,after,id,'content',JSON.stringify(l),JSON.stringify(r))
+    add(diffs,after,id,'position',beforeSemantic.blocks.findIndex((x)=>x.id===id),afterSemantic.blocks.findIndex((x)=>x.id===id))
+  }
+  for (const id of new Set([...beforeSemantic.claims.map((x)=>x.id),...afterSemantic.claims.map((x)=>x.id)])) {
+    const l=beforeSemantic.claims.find((x)=>x.id===id),r=afterSemantic.claims.find((x)=>x.id===id)
+    if(!l||!r){add(diffs,after,id,'claim',l?JSON.stringify(l):null,r?JSON.stringify(r):null);continue}
+    add(diffs,after,id,'statement',l.statement,r.statement);add(diffs,after,id,'rationale',l.rationale,r.rationale);add(diffs,after,id,'confidence',l.confidence,r.confidence);add(diffs,after,id,'citations',l.citationIds.join(', '),r.citationIds.join(', '))
+  }
+  for (const id of new Set([...beforeSemantic.citations.map((x)=>x.id),...afterSemantic.citations.map((x)=>x.id)])) {
+    const l=beforeSemantic.citations.find((x)=>x.id===id),r=afterSemantic.citations.find((x)=>x.id===id)
+    if(!l||!r){add(diffs,after,id,'citation',l?JSON.stringify(l):null,r?JSON.stringify(r):null);continue}
+    add(diffs,after,id,'label',l.label,r.label);add(diffs,after,id,'locator',l.locator,r.locator);add(diffs,after,id,'source',l.sourceId,r.sourceId);add(diffs,after,id,'evidence',l.evidenceObjectId,r.evidenceObjectId)
+  }
+
   for (const id of new Set([...before.metrics.map((x)=>x.id),...after.metrics.map((x)=>x.id)])) {
     const l=before.metrics.find((x)=>x.id===id),r=after.metrics.find((x)=>x.id===id); if(!l||!r){add(diffs,after,`metric:${id}`,'object',l?JSON.stringify(l):null,r?JSON.stringify(r):null);continue}
     add(diffs,after,`metric:${id}`,'value',l.value,r.value); add(diffs,after,`metric:${id}`,'formula',l.formula,r.formula); add(diffs,after,`metric:${id}`,'source',l.source,r.source)
