@@ -30,5 +30,6 @@ test('universal query reports no results without inventing workspace objects', (
   const result = resolveUniversalQuery('quantum submarine procurement', workspace)
   assert.equal(result.kind, 'search')
   assert.deepEqual(result.results, [])
-  assert.match(result.message, /I can insert semantic document blocks/)
+  assert.match(result.message, /create or remove computed metrics/)
+  assert.match(result.message, /insert semantic document blocks/)
 })
