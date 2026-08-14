@@ -12,6 +12,7 @@ export type PaletteIntent =
   | { kind: 'unknown'; message: string }
 
 function normalize(value: string) { return value.trim().toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim() }
+
 function findRegion(workspace: WorkspaceState, input: string) {
   const wanted = normalize(input)
   return workspace.regions.find((row) => normalize(row.region) === wanted || normalize(row.id) === wanted)
@@ -63,13 +64,24 @@ export function parsePaletteIntent(input: string, workspace: WorkspaceState): Pa
     return { kind: 'command', label: 'Update revenue formula', command: { type: 'metric.formula', metricId: 'revenue', formula } }
   }
 
+  const planMatch = query.match(/^(?:set|change|update)\s+(.+?)\s+(?:revenue\s+)?plan\s+(?:to\s+)?\$?(-?(?:\d+(?:\.\d+)?|\.\d+))\s*m?$/i)
+  if (planMatch) {
+    const region = findRegion(workspace, planMatch[1])
+    if (!region) return { kind: 'error', message: `Unknown region: ${planMatch[1].trim()}` }
+    return { kind: 'command', label: `Update ${region.region} revenue plan`, command: { type: 'plan.update', planId: region.id, field: 'revenue', value: Number(planMatch[2]) } }
+  }
+
   const regionMatch = query.match(/^(?:set|change|update)\s+(.+?)\s+(revenue|growth|margin)\s+(?:to\s+)?\$?(-?(?:\d+(?:\.\d+)?|\.\d+))\s*(?:m|%|percent)?$/i)
   if (regionMatch) {
     const region = findRegion(workspace, regionMatch[1])
     if (!region) return { kind: 'error', message: `Unknown region: ${regionMatch[1].trim()}` }
     const field = regionMatch[2].toLowerCase() as 'revenue' | 'growth' | 'margin'
-    return { kind: 'command', label: `Update ${region.region} ${field}`, command: { type: 'region.update', regionId: region.id, field, value: Number(regionMatch[3]) } }
+    return {
+      kind: 'command',
+      label: `Update ${region.region} ${field}`,
+      command: { type: 'region.update', regionId: region.id, field, value: Number(regionMatch[3]) },
+    }
   }
 
-  return { kind: 'unknown', message: 'I can edit regional metrics, formulas, source freshness, strategy text, decisions, navigate views, and open history.' }
+  return { kind: 'unknown', message: 'I can edit actuals, plan values, formulas, source freshness, strategy text, decisions, navigate views, and open history.' }
 }
