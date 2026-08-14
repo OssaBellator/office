@@ -3,7 +3,11 @@ import type { VersionedWorkspaceSession } from './versioning.ts'
 import type { StoredWorkspace, WorkspaceRepository } from './workspaceRepository.ts'
 
 export class IntegrityCheckedWorkspaceRepository implements WorkspaceRepository {
-  constructor(private inner: WorkspaceRepository) {}
+  private inner: WorkspaceRepository
+
+  constructor(inner: WorkspaceRepository) {
+    this.inner = inner
+  }
 
   async create(workspaceId: string, session: VersionedWorkspaceSession): Promise<StoredWorkspace> {
     assertVersionedSessionIntegrity(session)
