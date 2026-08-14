@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client'
 import WorkspaceApp from './WorkspaceApp'
 import './styles.css'
 import './history.css'
+import './present.css'
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
