@@ -1,4 +1,5 @@
 import type { WorkspaceState } from './model.ts'
+import { getEditableChart } from './chartModel.ts'
 import { getSemanticDocument } from './semanticDocument.ts'
 import { executeVersionedWorkspaceCommand, type VersionedWorkspaceSession, type VersionedWorkspaceTransaction } from './versioning.ts'
 import type { VersionedWorkspaceCommand } from './semanticCommands.ts'
@@ -25,6 +26,7 @@ export function planTransactionRevert(session:VersionedWorkspaceSession,transact
     case'annotation.insert':
     case'annotation.update':
     case'annotation.remove':if(semanticJson(current)!==semanticJson(transaction.after))conflicts.push(conflict('document:strategy','semanticDocument','Semantic document changed again after this transaction'));else inverseCommand={type:'document.semantic.replace',value:getSemanticDocument(transaction.before)};break
+    case'chart.kind':{const before=transaction.before.charts.find((x)=>x.id===command.chartId),after=transaction.after.charts.find((x)=>x.id===command.chartId);let now;try{now=getEditableChart(current,command.chartId)}catch{now=null}if(!before||!after||!now)conflicts.push(conflict(`chart:${command.chartId}`,'kind','Chart no longer exists'));else if(String(now.kind)!==String(after.kind))conflicts.push(conflict(`chart:${command.chartId}`,'kind','Chart kind changed again after this transaction'));else inverseCommand={type:'chart.kind',chartId:command.chartId,kind:String(before.kind)==='line'?'line':'grouped-bar'};break}
     case'metric.formula':{const before=transaction.before.metrics.find((x)=>x.id===command.metricId),after=transaction.after.metrics.find((x)=>x.id===command.metricId),now=current.metrics.find((x)=>x.id===command.metricId);if(!before||!after||!now)conflicts.push(conflict(`metric:${command.metricId}`,'formula','Metric no longer exists'));else if((now.formula??null)!==(after.formula??null))conflicts.push(conflict(`metric:${command.metricId}`,'formula','Formula changed again after this transaction'));else inverseCommand={type:'metric.formula',metricId:command.metricId,formula:before.formula??null,fallbackValue:before.value};break}
     case'source.status':{const before=transaction.before.sources.find((x)=>x.id===command.sourceId),after=transaction.after.sources.find((x)=>x.id===command.sourceId),now=current.sources.find((x)=>x.id===command.sourceId);if(!before||!after||!now)conflicts.push(conflict(command.sourceId,'status','Source no longer exists'));else if(now.status!==after.status)conflicts.push(conflict(command.sourceId,'status','Source freshness changed again after this transaction'));else inverseCommand={type:'source.status',sourceId:command.sourceId,status:before.status};break}
   }
