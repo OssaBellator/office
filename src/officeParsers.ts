@@ -4,7 +4,7 @@ export type ImportedDocumentBlock = {
 }
 
 export type ImportedSlide = { title: string; body: string[]; note: string; flattenedTables: number }
-export type ImportedSheet = { name: string; rows: Array<Array<string | number | null>> }
+export type ImportedSheet = { name: string; rows: Array<Array<string | number | null>>; formulas?: Array<Array<string | null>> }
 
 function decodeXml(value: string) {
   return value
@@ -206,27 +206,32 @@ function columnIndex(reference: string) {
   return result - 1
 }
 
-export function parseXlsxSheetXml(sheetXml: string, sharedStrings: string[] = []): Array<Array<string | number | null>> {
-  const rows: Array<Array<string | number | null>> = []
-  for (const rowMatch of sheetXml.matchAll(/<row\b[^>]*>([\s\S]*?)<\/row>/gi)) {
-    const row: Array<string | number | null> = []
-    for (const cellMatch of rowMatch[1].matchAll(/<c\b([^>]*)>([\s\S]*?)<\/c>/gi)) {
-      const attrs = cellMatch[1], body = cellMatch[2]
-      const reference = attribute(attrs, 'r') ?? `A${rows.length + 1}`
-      const index = columnIndex(reference)
-      const type = attribute(attrs, 't') ?? ''
-      const raw = body.match(/<v\b[^>]*>([\s\S]*?)<\/v>/i)?.[1]
-      let value: string | number | null = null
-      if (type === 's' && raw !== undefined) value = sharedStrings[Number(raw)] ?? ''
-      else if (type === 'inlineStr') value = tagTexts(body, 't').join('')
-      else if ((type === 'str' || type === 'e') && raw !== undefined) value = decodeXml(raw)
-      else if (raw !== undefined && raw !== '') value = Number.isFinite(Number(raw)) ? Number(raw) : decodeXml(raw)
-      while (row.length <= index) row.push(null)
-      row[index] = value
+export function parseXlsxSheetXmlDetailed(sheetXml:string,sharedStrings:string[]=[]){
+  const rows:Array<Array<string|number|null>>=[],formulas:Array<Array<string|null>>=[]
+  for(const rowMatch of sheetXml.matchAll(/<row\b[^>]*>([\s\S]*?)<\/row>/gi)){
+    const row:Array<string|number|null>=[],formulaRow:Array<string|null>=[]
+    for(const cellMatch of rowMatch[1].matchAll(/<c\b([^>]*)>([\s\S]*?)<\/c>/gi)){
+      const attrs=cellMatch[1],body=cellMatch[2]
+      const reference=attribute(attrs,'r')??`A${rows.length+1}`,index=columnIndex(reference),type=attribute(attrs,'t')??''
+      const raw=body.match(/<v\b[^>]*>([\s\S]*?)<\/v>/i)?.[1]
+      const formulaMatch=body.match(/<f\b[^>]*>([\s\S]*?)<\/f>/i)
+      let value:string|number|null=null
+      if(type==='s'&&raw!==undefined)value=sharedStrings[Number(raw)]??''
+      else if(type==='inlineStr')value=tagTexts(body,'t').join('')
+      else if((type==='str'||type==='e')&&raw!==undefined)value=decodeXml(raw)
+      else if(raw!==undefined&&raw!=='')value=Number.isFinite(Number(raw))?Number(raw):decodeXml(raw)
+      while(row.length<=index)row.push(null)
+      while(formulaRow.length<=index)formulaRow.push(null)
+      row[index]=value
+      if(formulaMatch)formulaRow[index]=decodeXml(formulaMatch[1].replace(/<[^>]+>/g,'')).trim()
     }
-    rows.push(row)
+    rows.push(row);formulas.push(formulaRow)
   }
-  return rows
+  return{rows,formulas}
+}
+
+export function parseXlsxSheetXml(sheetXml: string, sharedStrings: string[] = []): Array<Array<string | number | null>> {
+  return parseXlsxSheetXmlDetailed(sheetXml,sharedStrings).rows
 }
 
 export function parseXlsxSharedStrings(xml: string | null) {
@@ -247,7 +252,7 @@ export function parseXlsxWorkbook(workbookXml: string, relationshipsXml: string,
     if (!target) continue
     const normalized = resolvePackagePath('xl/workbook.xml', target)
     const xml = sheetXmlByPath.get(normalized)
-    if (xml) sheets.push({ name, rows:parseXlsxSheetXml(xml, sharedStrings) })
+    if (xml) { const parsed=parseXlsxSheetXmlDetailed(xml,sharedStrings);sheets.push({ name, rows:parsed.rows, formulas:parsed.formulas }) }
   }
   return sheets
 }
