@@ -39,6 +39,11 @@ export function compareWorkspaceStates(before: WorkspaceState, after: WorkspaceS
     add(diffs,after,id,'body',l.body,r.body);add(diffs,after,id,'owner',l.owner,r.owner);add(diffs,after,id,'status',l.status,r.status);add(diffs,after,id,'block',l.blockId,r.blockId)
   }
 
+  for (const id of new Set([...before.charts.map((x)=>x.id),...after.charts.map((x)=>x.id)])) {
+    const l=before.charts.find((x)=>x.id===id),r=after.charts.find((x)=>x.id===id)
+    if(!l||!r){add(diffs,after,`chart:${id}`,'object',l?JSON.stringify(l):null,r?JSON.stringify(r):null);continue}
+    add(diffs,after,`chart:${id}`,'label',l.label,r.label);add(diffs,after,`chart:${id}`,'kind',String(l.kind),String(r.kind));add(diffs,after,`chart:${id}`,'relationship',l.relationshipId,r.relationshipId);add(diffs,after,`chart:${id}`,'definition',JSON.stringify({category:l.category,series:l.series}),JSON.stringify({category:r.category,series:r.series}))
+  }
   for (const id of new Set([...before.metrics.map((x)=>x.id),...after.metrics.map((x)=>x.id)])) {
     const l=before.metrics.find((x)=>x.id===id),r=after.metrics.find((x)=>x.id===id); if(!l||!r){add(diffs,after,`metric:${id}`,'object',l?JSON.stringify(l):null,r?JSON.stringify(r):null);continue}
     add(diffs,after,`metric:${id}`,'value',l.value,r.value); add(diffs,after,`metric:${id}`,'formula',l.formula,r.formula); add(diffs,after,`metric:${id}`,'source',l.source,r.source)
