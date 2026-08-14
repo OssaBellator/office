@@ -21,7 +21,7 @@ export function buildWorkspaceSearchIndex(workspace: WorkspaceState): WorkspaceS
     record('document:strategy','document',workspace.document.title,`${workspace.document.eyebrow} ${workspace.document.summary}`,['docs']),
   ]
   for (const block of semantic.blocks) {
-    if (block.type === 'paragraph') records.push(record(block.id,'block','Strategy paragraph',block.text,['docs']))
+    if (block.type === 'paragraph') records.push(record(block.id,'block',block.style?.startsWith('heading-') ? 'Strategy heading' : block.style === 'bullet' || block.style === 'numbered' ? 'Strategy list item' : 'Strategy paragraph',block.text,['docs']))
     if (block.type === 'claim') {
       const claim = semantic.claims.find((item) => item.id === block.claimId)
       if (claim) { const resolved=resolveSemanticClaim(workspace,claim.id);records.push(record(claim.id,'claim',claim.statement,`${claim.rationale} ${claim.confidence} ${resolved.status} ${resolved.sourceLabels.join(' ')}`,['docs'])) }
@@ -38,7 +38,7 @@ export function buildWorkspaceSearchIndex(workspace: WorkspaceState): WorkspaceS
   for (const chart of workspace.charts) records.push(record(`chart:${chart.id}`,'chart',chart.label,`${chart.kind} ${chart.relationshipId} ${chart.series.map((series)=>`${series.tableId}.${series.fieldId}`).join(' ')}`,['data','present']))
   for (const relationship of workspace.relationships) records.push(record(relationship.id,'relationship',relationship.label,`${relationship.fromTable}.${relationship.fromField} ${relationship.toTable}.${relationship.toField} ${relationship.cardinality}`,['data']))
   for (const source of workspace.sources) records.push(record(source.id,'source',source.label,`${source.type} ${source.locator} ${source.status}`,['docs','data']))
-  for (const scene of buildAllPresentationScenes(workspace)) records.push(record(`scene:${scene.id}`,'scene',scene.title,`${scene.eyebrow} ${scene.note} ${scene.source}`,['present']))
+  for (const scene of buildAllPresentationScenes(workspace)) records.push(record(`scene:${scene.id}`,'scene',scene.title,`${scene.eyebrow} ${scene.body?.join(' ') ?? ''} ${scene.note} ${scene.source}`,['present']))
   return records
 }
 
