@@ -9,6 +9,7 @@
   "scripts": {
     "dev": "vite",
     "test": "node --experimental-strip-types --test tests/*.test.mjs",
+    "test:interop": "node --experimental-strip-types --test tests/officeArchive.test.mjs tests/officeImport.test.mjs tests/officeFidelity.test.mjs tests/officeExport.test.mjs tests/googleWorkspaceImport.test.mjs tests/googleDriveProvider.test.mjs tests/importedTables.test.mjs",
     "test:watch": "node --experimental-strip-types --test --watch tests/*.test.mjs",
     "typecheck": "tsc --noEmit",
     "build": "tsc --noEmit && vite build",
