@@ -1,6 +1,6 @@
 import { readOfficeXml, readOfficeZip } from './officeArchive.ts'
-import { parseDocxDocumentXml, parsePptxSlideOrder, parsePptxSlideXml, parseRelatedPartPath, parseXlsxSharedStrings, parseXlsxWorkbook, type ImportedSheet } from './officeParsers.ts'
-import { getImportedTables, importedTableFromSheet } from './importedTables.ts'
+import { parseDocxDocumentXml, parseDocxTables, parsePptxSlideOrder, parsePptxSlideXml, parseRelatedPartPath, parseXlsxSharedStrings, parseXlsxWorkbook, type ImportedSheet } from './officeParsers.ts'
+import { getImportedTables, importedTableFromSheet, type ImportedDataTable } from './importedTables.ts'
 import { getSemanticDocument, type SemanticParagraphStyle } from './semanticDocument.ts'
 import { getPresentationState, type ImportedPresentationScene } from './presentationState.ts'
 import type { WorkspaceState } from './model.ts'
@@ -28,7 +28,8 @@ export async function planDocxImport(workspace: WorkspaceState, input: ArrayBuff
   const documentXml = readOfficeXml(entries, 'word/document.xml')
   if (!documentXml) throw new Error('DOCX is missing word/document.xml')
   const blocks = parseDocxDocumentXml(documentXml, readOfficeXml(entries, 'word/numbering.xml'))
-  if (!blocks.length) throw new Error('DOCX contains no importable text blocks')
+  const tables = parseDocxTables(documentXml)
+  if (!blocks.length && !tables.length) throw new Error('DOCX contains no importable text or tables')
   const startIndex = getSemanticDocument(workspace).blocks.length
   const importSuffix = suffix()
   const commands: VersionedWorkspaceCommand[] = blocks.map((block,index) => ({
@@ -36,11 +37,14 @@ export async function planDocxImport(workspace: WorkspaceState, input: ArrayBuff
     index:startIndex+index,
     block:{ id:`block:import:${importSuffix}:${index+1}`, type:'paragraph', text:block.text, style:(block.kind === 'paragraph' ? 'body' : block.kind) as SemanticParagraphStyle },
   }))
+  const importedTables = tables.flatMap((sheet,index) => importedTableFromSheet(sheet,fileName,`${importSuffix}-doc-table-${index+1}`) ?? [])
+  if(importedTables.length)commands.push({type:'data.imported.replace',tables:[...getImportedTables(workspace),...importedTables]})
   const warnings:string[]=[]
   if(hasPath(entries,/^word\/media\//i))warnings.push('Embedded DOCX images are not imported yet; text structure is preserved.')
   if(hasPath(entries,/^word\/(?:charts|embeddings)\//i))warnings.push('Embedded DOCX charts or objects are not imported yet.')
-  if(/<w:tbl\b/i.test(documentXml))warnings.push('DOCX tables are currently imported as their contained paragraphs, not as semantic Data tables.')
-  return { kind:'docx', label:`${fileName} · ${blocks.length} document blocks`, commands, warnings, importedItems:blocks.length }
+  if(importedTables.length)warnings.push(`${importedTables.length} document table${importedTables.length===1?' was':'s were'} imported into Data using the first row as column headers.`)
+  const importedItems=blocks.length+importedTables.reduce((count,table)=>count+Math.max(1,table.rows.length),0)
+  return { kind:'docx', label:`${fileName} · ${blocks.length} document blocks · ${importedTables.length} data tables`, commands, warnings, importedItems }
 }
 
 function numericSlidePaths(entries: Map<string, Uint8Array>) {
@@ -49,7 +53,6 @@ function numericSlidePaths(entries: Map<string, Uint8Array>) {
     return match ? [{ path, number:Number(match[1]) }] : []
   }).sort((a,b)=>a.number-b.number).map((item)=>item.path)
 }
-
 function slideOrder(entries: Map<string,Uint8Array>) {
   const ordered=parsePptxSlideOrder(readOfficeXml(entries,'ppt/presentation.xml'),readOfficeXml(entries,'ppt/_rels/presentation.xml.rels'))
   const valid=ordered.filter((path)=>entries.has(path))
@@ -60,8 +63,7 @@ export async function planPptxImport(workspace: WorkspaceState, input: ArrayBuff
   const entries = await readOfficeZip(input)
   const paths = slideOrder(entries)
   if (!paths.length) throw new Error('PPTX contains no slides')
-  const importId = suffix()
-  const fileSlug = slug(fileName)
+  const importId = suffix(), fileSlug = slug(fileName)
   const source = `${fileName} · imported from PowerPoint / Google Slides export`
   const importedScenes: ImportedPresentationScene[] = paths.map((path,index) => {
     const xml = readOfficeXml(entries,path)!
@@ -95,6 +97,7 @@ function percentScale(values: Array<number | null>) {
 
 function planActualSheet(workspace: WorkspaceState, sheet: ImportedSheet, commands: VersionedWorkspaceCommand[], warnings: string[]) {
   const header=sheetHeader(sheet); if(!header)return 0
+  if(/(plan|budget|forecast)/.test(normalized(sheet.name)))return 0
   const indexes={region:header.index('Region'),revenue:header.index('Revenue'),growth:header.index('Growth'),margin:header.index('Margin')}
   if(Object.values(indexes).some((index)=>index<0))return 0
   const data=sheet.rows.slice(header.rowIndex+1).filter((row)=>row.some((cell)=>cell!==null&&String(cell).trim()!==''))
@@ -128,6 +131,11 @@ function planPlanSheet(workspace: WorkspaceState, sheet: ImportedSheet, commands
   return matched
 }
 
+function hasExtraColumns(sheet:ImportedSheet, known:Set<string>) {
+  const header=sheetHeader(sheet);if(!header)return false
+  return header.headers.some((value)=>value&&!known.has(value))
+}
+
 export async function planXlsxImport(workspace: WorkspaceState, input: ArrayBuffer | Uint8Array, fileName: string): Promise<OfficeImportPlan> {
   const entries=await readOfficeZip(input)
   const workbook=readOfficeXml(entries,'xl/workbook.xml'),relationships=readOfficeXml(entries,'xl/_rels/workbook.xml.rels')
@@ -138,18 +146,21 @@ export async function planXlsxImport(workspace: WorkspaceState, input: ArrayBuff
   for(const path of entries.keys())if(/^xl\/worksheets\/[^/]+\.xml$/i.test(path)){const xml=readOfficeXml(entries,path);if(xml){xmlByPath.set(path,xml);if(/<f\b/i.test(xml))hasFormula=true}}
   const sheets=parseXlsxWorkbook(workbook,relationships,xmlByPath,shared)
   const commands:VersionedWorkspaceCommand[]=[],warnings:string[]=[]
-  const genericTables=[]
+  const genericTables:ImportedDataTable[]=[]
   let matched=0,importedItems=0
   const importSuffix=suffix()
   for(const [index,sheet] of sheets.entries()){
-    const sheetMatched=planActualSheet(workspace,sheet,commands,warnings)+planPlanSheet(workspace,sheet,commands,warnings)
-    if(sheetMatched){matched+=sheetMatched;importedItems+=sheetMatched;continue}
-    const table=importedTableFromSheet(sheet,fileName,`${importSuffix}-${index+1}`)
-    if(table){genericTables.push(table);importedItems+=table.rows.length||1}
+    const actualMatched=planActualSheet(workspace,sheet,commands,warnings)
+    const planMatched=actualMatched?0:planPlanSheet(workspace,sheet,commands,warnings)
+    const sheetMatched=actualMatched+planMatched
+    const known=actualMatched?new Set(['region','revenue','growth','margin']):planMatched?new Set(['region','revenue']):new Set<string>()
+    const retainGeneric=!sheetMatched||hasExtraColumns(sheet,known)
+    if(sheetMatched){matched+=sheetMatched;importedItems+=sheetMatched}
+    if(retainGeneric){const table=importedTableFromSheet(sheet,fileName,`${importSuffix}-${index+1}`);if(table){genericTables.push(table);importedItems+=table.rows.length||1}}
   }
   if(genericTables.length)commands.push({type:'data.imported.replace',tables:[...getImportedTables(workspace),...genericTables]})
   if(hasFormula)warnings.push('Excel/Google Sheets formulas currently import through their cached values; Frame does not translate arbitrary spreadsheet formulas yet.')
-  if(genericTables.length)warnings.push(`${genericTables.length} worksheet${genericTables.length===1?'':'s'} did not match the finance schema and will be retained as generic Frame Data tables.`)
+  if(genericTables.length)warnings.push(`${genericTables.length} worksheet${genericTables.length===1?'':'s'} ${genericTables.length===1?'was':'were'} retained as generic Frame Data to preserve foreign columns or schemas.`)
   if(!matched&&!genericTables.length)throw new Error('Workbook contains no non-empty worksheets that Frame can import.')
   return {kind:'xlsx',label:`${fileName} · ${sheets.length} sheets`,commands,warnings,importedItems}
 }
