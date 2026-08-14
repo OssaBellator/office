@@ -1,7 +1,7 @@
 import type { Metric } from './model.ts'
 import type { VersionedWorkspaceCommand } from './semanticCommands.ts'
-import type { BlockAnnotation, SemanticCitation, SemanticClaim, SemanticDocumentBlock, SemanticDocumentState } from './semanticDocument.ts'
-import type { PresentationState } from './presentationState.ts'
+import type { BlockAnnotation, SemanticCitation, SemanticClaim, SemanticDocumentBlock, SemanticDocumentState, SemanticParagraphStyle } from './semanticDocument.ts'
+import type { ImportedPresentationScene, PresentationSceneId, PresentationState } from './presentationState.ts'
 
 function record(value: unknown): Record<string, unknown> {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('Command must be a JSON object')
@@ -14,6 +14,7 @@ function optionalText(value: unknown, field: string) { return value === undefine
 function oneOf<T extends string>(value: unknown, field: string, allowed: readonly T[]): T { const result=text(value,field) as T;if(!allowed.includes(result))throw new Error(`${field} must be one of: ${allowed.join(', ')}`);return result }
 function array(value: unknown, field: string) { if (!Array.isArray(value)) throw new Error(`${field} must be an array`); return value }
 function timestamp(changedAt: string | undefined) { return changedAt === undefined ? {} : { changedAt } }
+function sceneId(value: unknown, field: string): PresentationSceneId { const result=text(value,field);if(result==='thesis'||result==='performance'||result==='signal'||result==='decision'||result.startsWith('imported:'))return result as PresentationSceneId;throw new Error(`${field} must be a built-in or imported presentation scene id`) }
 
 function parseMetric(value: unknown): Metric {
   const input=record(value)
@@ -30,7 +31,10 @@ function parseMetric(value: unknown): Metric {
 }
 function parseBlock(value: unknown): SemanticDocumentBlock {
   const input = record(value), id=text(input.id,'block.id'), type=oneOf(input.type,'block.type',['paragraph','claim','metric-embed','decision-embed'] as const)
-  if(type==='paragraph')return{id,type,text:text(input.text,'block.text')}
+  if(type==='paragraph'){
+    const style=input.style===undefined?undefined:oneOf(input.style,'block.style',['body','heading-1','heading-2','heading-3','bullet','numbered'] as const) as SemanticParagraphStyle
+    return{id,type,text:text(input.text,'block.text'),...(style?{style}:{})}
+  }
   if(type==='claim')return{id,type,claimId:text(input.claimId,'block.claimId')}
   if(type==='metric-embed')return{id,type,label:text(input.label,'block.label'),metricIds:array(input.metricIds,'block.metricIds').map((item,index)=>text(item,`block.metricIds[${index}]`))}
   return{id,type,decisionId:text(input.decisionId,'block.decisionId')}
@@ -42,7 +46,8 @@ function parseClaim(value: unknown): SemanticClaim {
 function parseCitation(value: unknown): SemanticCitation {const input=record(value);return{id:text(input.id,'citation.id'),label:text(input.label,'citation.label'),sourceId:text(input.sourceId,'citation.sourceId'),evidenceObjectId:text(input.evidenceObjectId,'citation.evidenceObjectId'),locator:text(input.locator,'citation.locator')}}
 function parseAnnotation(value: unknown): BlockAnnotation {const input=record(value);return{id:text(input.id,'annotation.id'),blockId:text(input.blockId,'annotation.blockId'),kind:oneOf(input.kind,'annotation.kind',['comment','task','approval'] as const),body:text(input.body,'annotation.body'),owner:text(input.owner,'annotation.owner'),status:oneOf(input.status,'annotation.status',['open','resolved','pending','approved'] as const)}}
 function parseSemanticDocument(value: unknown): SemanticDocumentState {const input=record(value);return{blocks:array(input.blocks,'semanticDocument.blocks').map(parseBlock),claims:array(input.claims,'semanticDocument.claims').map(parseClaim),citations:array(input.citations,'semanticDocument.citations').map(parseCitation),annotations:array(input.annotations,'semanticDocument.annotations').map(parseAnnotation)}}
-function parsePresentationState(value: unknown): PresentationState {const input=record(value);const sceneIds=['thesis','performance','signal','decision'] as const;const notes=record(input.notes??{});return{order:array(input.order,'presentation.order').map((item,index)=>oneOf(item,`presentation.order[${index}]`,sceneIds)),hiddenSceneIds:array(input.hiddenSceneIds,'presentation.hiddenSceneIds').map((item,index)=>oneOf(item,`presentation.hiddenSceneIds[${index}]`,sceneIds)),notes:Object.fromEntries(Object.entries(notes).map(([key,value])=>[oneOf(key,'presentation.notes key',sceneIds),text(value,`presentation.notes.${key}`)]))}}
+function parseImportedScene(value: unknown): ImportedPresentationScene {const input=record(value),id=sceneId(input.id,'presentation.importedScene.id');if(!id.startsWith('imported:'))throw new Error('Imported presentation scene ids must start with imported:');return{id,title:text(input.title,'presentation.importedScene.title'),body:array(input.body,'presentation.importedScene.body').map((item,index)=>text(item,`presentation.importedScene.body[${index}]`)),source:text(input.source,'presentation.importedScene.source'),note:input.note===undefined?undefined:text(input.note,'presentation.importedScene.note')}}
+function parsePresentationState(value: unknown): PresentationState {const input=record(value);const notes=record(input.notes??{}),importedScenes=input.importedScenes===undefined?undefined:array(input.importedScenes,'presentation.importedScenes').map(parseImportedScene);return{order:array(input.order,'presentation.order').map((item,index)=>sceneId(item,`presentation.order[${index}]`)),hiddenSceneIds:array(input.hiddenSceneIds,'presentation.hiddenSceneIds').map((item,index)=>sceneId(item,`presentation.hiddenSceneIds[${index}]`)),notes:Object.fromEntries(Object.entries(notes).map(([key,value])=>[sceneId(key,'presentation.notes key'),text(value,`presentation.notes.${key}`)])),...(importedScenes?{importedScenes}:{})}}
 
 export function parseWorkspaceCommand(value: unknown): VersionedWorkspaceCommand {
   const input=record(value), type=text(input.type,'type'), changedAt=optionalText(input.changedAt,'changedAt')
@@ -64,9 +69,9 @@ export function parseWorkspaceCommand(value: unknown): VersionedWorkspaceCommand
     case'annotation.remove':return{type,annotationId:text(input.annotationId,'annotationId'),changedAt}
     case'chart.kind':return{type,chartId:text(input.chartId,'chartId'),kind:oneOf(input.kind,'kind',['grouped-bar','line'] as const),changedAt}
     case'presentation.replace':return{type,value:parsePresentationState(input.value),changedAt}
-    case'presentation.scene.move':return{type,sceneId:oneOf(input.sceneId,'sceneId',['thesis','performance','signal','decision'] as const),toIndex:number(input.toIndex,'toIndex'),changedAt}
-    case'presentation.scene.visibility':return{type,sceneId:oneOf(input.sceneId,'sceneId',['thesis','performance','signal','decision'] as const),visible:boolean(input.visible,'visible'),changedAt}
-    case'presentation.note.update':return{type,sceneId:oneOf(input.sceneId,'sceneId',['thesis','performance','signal','decision'] as const),note:text(input.note,'note'),changedAt}
+    case'presentation.scene.move':return{type,sceneId:sceneId(input.sceneId,'sceneId'),toIndex:number(input.toIndex,'toIndex'),changedAt}
+    case'presentation.scene.visibility':return{type,sceneId:sceneId(input.sceneId,'sceneId'),visible:boolean(input.visible,'visible'),changedAt}
+    case'presentation.note.update':return{type,sceneId:sceneId(input.sceneId,'sceneId'),note:text(input.note,'note'),changedAt}
     case'metric.create':return{type,metric:parseMetric(input.metric),...timestamp(changedAt)}
     case'metric.remove':return{type,metricId:text(input.metricId,'metricId'),...timestamp(changedAt)}
     case'metric.formula':return{type,metricId:text(input.metricId,'metricId'),formula:input.formula===null?null:text(input.formula,'formula'),fallbackValue:input.fallbackValue===undefined?undefined:number(input.fallbackValue,'fallbackValue'),...timestamp(changedAt)}
