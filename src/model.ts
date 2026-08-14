@@ -255,17 +255,28 @@ export function cloneSeedWorkspace(): WorkspaceState {
 }
 
 export function hydrateWorkspace(value: Partial<WorkspaceState> | null | undefined): WorkspaceState {
-  if (!value) return cloneSeedWorkspace()
+  const base = cloneSeedWorkspace()
+  if (!value) return base
+
+  const legacyMetrics = value.metrics ?? []
+  const knownMetricIds = new Set(base.metrics.map((metric) => metric.id))
+  const metrics = [
+    ...base.metrics.map((metric) => ({
+      ...metric,
+      ...(legacyMetrics.find((candidate) => candidate.id === metric.id) ?? {}),
+    })),
+    ...legacyMetrics.filter((metric) => !knownMetricIds.has(metric.id)),
+  ]
 
   return {
-    ...cloneSeedWorkspace(),
+    ...base,
     ...value,
-    document: { ...seedWorkspace.document, ...(value.document ?? {}) },
-    metrics: value.metrics ?? cloneSeedWorkspace().metrics,
-    regions: value.regions ?? cloneSeedWorkspace().regions,
-    decisions: value.decisions ?? cloneSeedWorkspace().decisions,
-    sources: value.sources ?? cloneSeedWorkspace().sources,
-    graph: value.graph ?? cloneSeedWorkspace().graph,
+    document: { ...base.document, ...(value.document ?? {}) },
+    metrics,
+    regions: value.regions ?? base.regions,
+    decisions: value.decisions ?? base.decisions,
+    sources: value.sources ?? base.sources,
+    graph: value.graph ?? base.graph,
     history: value.history ?? [],
   }
 }
