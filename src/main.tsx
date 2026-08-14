@@ -17,6 +17,7 @@ import './workspace-tools.css'
 import './governance-ui.css'
 import './attainment.css'
 import './object-focus.css'
+import './metric-authoring.css'
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
