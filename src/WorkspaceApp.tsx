@@ -9,6 +9,7 @@ import { parsePaletteIntent } from './intent'
 import { makeGrowthEvidenceInsertion } from './semanticDocument'
 import { exportWorkspaceSession, importWorkspaceSession } from './workspaceIO'
 import { exportPlanCsv, exportPresentationMarkdown, exportRegionsCsv, exportStrategyMarkdown } from './compatibilityExports'
+import { exportWorkspaceDocx, exportWorkspacePptx, exportWorkspaceXlsx, type OfficeExportFile } from './officeExport'
 import { planPlanCsvImport, planRegionsCsvImport } from './csvImportPlanner'
 import { planOfficeImport } from './officeImportPlanner'
 import { approveAutomation, executeGovernedAutomation, planGovernedAutomation, type GovernedAutomationPlan } from './governedAutomation'
@@ -75,6 +76,18 @@ function downloadText(filename: string, text: string, type: string) {
   const anchor = document.createElement('a')
   anchor.href = url
   anchor.download = filename
+  anchor.click()
+  URL.revokeObjectURL(url)
+}
+
+function downloadOfficeFile(file: OfficeExportFile) {
+  const copy = new Uint8Array(file.bytes.byteLength)
+  copy.set(file.bytes)
+  const blob = new Blob([copy.buffer], { type:file.mimeType })
+  const url = URL.createObjectURL(blob)
+  const anchor = document.createElement('a')
+  anchor.href = url
+  anchor.download = file.filename
   anchor.click()
   URL.revokeObjectURL(url)
 }
@@ -165,6 +178,10 @@ export default function WorkspaceApp() {
   const exportRegions = () => { downloadText(`${baseName}-actuals.csv`, exportRegionsCsv(workspace), 'text/csv;charset=utf-8'); setWorkspaceNotice('Actuals CSV exported') }
   const exportPlan = () => { downloadText(`${baseName}-plan.csv`, exportPlanCsv(workspace), 'text/csv;charset=utf-8'); setWorkspaceNotice('Plan CSV exported') }
   const exportPortableSet = () => { exportStrategy(); exportBoard(); exportRegions(); exportPlan(); setWorkspaceNotice('Portable workspace set exported') }
+  const exportOfficeSet = () => {
+    for (const file of [exportWorkspaceDocx(workspace), exportWorkspacePptx(workspace), exportWorkspaceXlsx(workspace)]) downloadOfficeFile(file)
+    setWorkspaceNotice('Office compatibility set exported · DOCX · PPTX · XLSX')
+  }
 
   const importBackup = () => {
     const input = document.createElement('input')
@@ -316,7 +333,7 @@ export default function WorkspaceApp() {
       {historyOpen && <HistoryBrowser session={session} onClose={() => setHistoryOpen(false)} onRevert={revertTransaction} />}
       {presentationOpen && <PresentationPlayer workspace={workspace} onClose={() => setPresentationOpen(false)} />}
       {presentationGateOpen && <PresentationReadinessDialog readiness={readiness} reviewGate={reviewGate} onClose={() => setPresentationGateOpen(false)} onOpenContext={() => { setPresentationGateOpen(false); setContextOpen(true) }} onPresentAnyway={() => { setPresentationGateOpen(false); setPresentationOpen(true) }} />}
-      {transferMode && <WorkspaceTransferDialog mode={transferMode} onClose={() => setTransferMode(null)} onExportBackup={exportBackup} onExportStrategy={exportStrategy} onExportBoard={exportBoard} onExportRegions={exportRegions} onExportPlan={exportPlan} onExportAll={exportPortableSet} onImportBackup={importBackup} onImportRegions={() => stageCsvImport('regions')} onImportPlan={() => stageCsvImport('plan')} onImportOffice={stageOfficeImport} />}
+      {transferMode && <WorkspaceTransferDialog mode={transferMode} onClose={() => setTransferMode(null)} onExportBackup={exportBackup} onExportStrategy={exportStrategy} onExportBoard={exportBoard} onExportRegions={exportRegions} onExportPlan={exportPlan} onExportAll={exportPortableSet} onExportOffice={exportOfficeSet} onImportBackup={importBackup} onImportRegions={() => stageCsvImport('regions')} onImportPlan={() => stageCsvImport('plan')} onImportOffice={stageOfficeImport} />}
       {pendingAutomation && <BatchPreviewModal plan={pendingAutomation.plan} governance={pendingAutomation.governance} warnings={pendingAutomation.warnings} title="Import semantic changes" onApply={applyPendingAutomation} onClose={() => setPendingAutomation(null)} />}
     </div>
   )
