@@ -22,6 +22,7 @@ This repository contains a local-first React prototype plus a testable workspace
 - **Cross-surface propagation**: changing regional revenue recalculates the shared Q2 revenue metric, which immediately updates Docs and Present.
 - **Reversible semantic command sessions** for model edits, decisions, and AI-style document actions.
 - **Undo/Redo controls** in the workspace shell plus `Cmd/Ctrl + Z` and `Cmd/Ctrl + Shift + Z` when focus is outside a text editor. Native text-field undo remains untouched.
+- **Previewable semantic actions**: command-palette actions can show field-level before/after diffs and downstream objects before the user applies them.
 - **Command palette** (`Cmd/Ctrl + K`) with deterministic prototype actions for navigating, adding evidence, approving a shared decision, and resetting the demo.
 - **Local persistence** through `localStorage`, including migration of older saved prototype state into the newer workspace schema.
 
@@ -62,7 +63,7 @@ Run tests, TypeScript validation, and the production Vite build:
 npm run verify
 ```
 
-The current core suite has **16 passing tests** covering semantic formulas, metric recalculation, transitive dependency propagation, upstream/downstream lineage, decision propagation, reversible undo/redo sessions, AI-style reversible document changes, legacy workspace hydration, formatting, and invalid mutation/reference failures.
+The committed core suite now has **19 tests** across semantic formulas, metric recalculation, transitive dependency propagation, upstream/downstream lineage, decision propagation, reversible undo/redo sessions, AI-style document changes, command-preview diffs, downstream impact previews, legacy workspace hydration, formatting, and invalid mutation/reference failures.
 
 ## Current architecture
 
@@ -74,19 +75,21 @@ src/
     DataSurface.tsx             Grid, Model, and Analyse modes
     PresentSurface.tsx          Storyboard/presentation surface
     ContextPanel.tsx            Provenance and activity context
-    CommandPalette.tsx          Deterministic semantic actions
+    CommandPalette.tsx          Deterministic actions and preview UI
+  commandPreview.ts             Pure semantic diff/impact preview engine
   formulas.ts                   Typed semantic formula parser/evaluator
   model.ts                      Workspace graph, schemas, lineage, commands, history
   main.tsx                      React entrypoint
   styles.css                    Base product visual system
-  model-view.css                Model view and history-control styling
+  model-view.css                Model, history, and preview styling
 
 tests/
   formulas.test.mjs
   model.test.mjs
+  preview.test.mjs
 ```
 
-The React layer delegates shared-object mutations to the workspace engine. Direct long-form text editing remains intentionally native to the editor surface, while structured/AI-like actions go through reversible semantic commands.
+The React layer delegates shared-object mutations to the workspace engine. Direct long-form text editing remains intentionally native to the editor surface, while structured/AI-like actions are previewed before being applied as reversible semantic commands.
 
 ## Product principles encoded in the prototype
 
@@ -94,16 +97,17 @@ The React layer delegates shared-object mutations to the workspace engine. Direc
 2. **One object, many representations.** Metrics and decisions retain identity across surfaces rather than being copied.
 3. **Purpose-built surfaces.** Docs, Data, and Present have different interaction models even though they share underlying objects.
 4. **Meaning before coordinates.** Data formulas reference tables and fields such as `Regions.Revenue`, not accidental cell positions.
-5. **Inspectable automation.** AI-like actions operate on structured objects and become reversible changes rather than opaque chat output.
-6. **Compatibility later, native model first.** DOCX/XLSX/PPTX import/export will matter, but the internal model should not inherit their limitations.
+5. **Inspectable automation.** AI-like actions expose proposed semantic changes and downstream impact before applying them.
+6. **Reversible by default.** Structured actions become undoable transactions rather than silent destructive edits.
+7. **Compatibility later, native model first.** DOCX/XLSX/PPTX import/export will matter, but the internal model should not inherit their limitations.
 
 ## Suggested next milestones
 
 ### 1. Semantic history and diffs
 
-- Stable transaction/event sequencing across branched undo history
-- Human-readable semantic diffs between versions
-- Impact preview before applying commands
+- Persistent transaction metadata alongside workspace state
+- Human-readable history browser using semantic diffs
+- Compare any two semantic versions
 - Merge formula dependencies directly into graph edges
 - Stronger source/provenance freshness state
 
