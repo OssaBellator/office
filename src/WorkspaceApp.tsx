@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react'
 import {
   Check, ChevronRight, Clock3, Database, FileText, Grid3X3, Link2, MoreHorizontal,
-  Play, Plus, Presentation, Search, Share2, Sparkles, Table2,
+  Play, Plus, Presentation, Search, Sparkles, Table2,
 } from 'lucide-react'
-import { cloneSeedWorkspace, type RegionRow, type Surface, type WorkspaceState } from './model'
+import { cloneSeedWorkspace, type RegionRow, type SourceRecord, type Surface, type WorkspaceState } from './model'
 import { previewVersionedCommand } from './semanticPreview'
 import { parsePaletteIntent } from './intent'
+import { exportWorkspaceSession, importWorkspaceSession } from './workspaceIO'
 import {
   createVersionedWorkspaceSession,
   executeVersionedWorkspaceCommand,
@@ -58,6 +59,7 @@ export default function WorkspaceApp() {
   const [pendingCommand, setPendingCommand] = useState<VersionedWorkspaceCommand | null>(null)
   const [contextOpen, setContextOpen] = useState(true)
   const [historyOpen, setHistoryOpen] = useState(false)
+  const [workspaceNotice, setWorkspaceNotice] = useState<string | null>(null)
   const workspace = session.present
   const commandPreview = pendingCommand ? previewVersionedCommand(workspace, pendingCommand) : null
 
@@ -87,6 +89,7 @@ export default function WorkspaceApp() {
   const commitDocument = (field: keyof WorkspaceState['document'], value: string) => execute({ type: 'document.update', field, value })
   const updateRegion = (id: string, field: keyof RegionRow, value: string | number) => execute({ type: 'region.update', regionId: id, field, value })
   const updateMetricFormula = (metricId: string, formula: string) => execute({ type: 'metric.formula', metricId, formula })
+  const updateSourceStatus = (sourceId: string, status: SourceRecord['status']) => execute({ type: 'source.status', sourceId, status })
 
   const stageApproval = () => setPendingCommand({ type: 'decision.status', decisionId: 'launch', status: 'approved' })
   const stageEvidence = () => setPendingCommand({ type: 'document.append', text: 'Evidence to validate: APAC growth is currently 31%, the strongest regional rate in the model.' })
@@ -95,6 +98,36 @@ export default function WorkspaceApp() {
   const openCommandPalette = () => { setPendingCommand(null); setCommandOpen(true) }
   const restoreDemo = () => { setSession(createVersionedWorkspaceSession(cloneSeedWorkspace())); setPendingCommand(null); setCommandOpen(false); setHistoryOpen(false) }
   const revertTransaction = (transactionId: string) => setSession((current) => revertVersionedTransaction(current, transactionId).session)
+  const exportBackup = () => {
+    const blob = new Blob([exportWorkspaceSession(session)], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const anchor = document.createElement('a')
+    anchor.href = url
+    anchor.download = `frame-${workspace.title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'workspace'}.json`
+    anchor.click()
+    URL.revokeObjectURL(url)
+    setWorkspaceNotice('Workspace backup exported')
+  }
+  const importBackup = () => {
+    const input = document.createElement('input')
+    input.type = 'file'
+    input.accept = '.json,application/json'
+    input.onchange = async () => {
+      const file = input.files?.[0]
+      if (!file) return
+      try {
+        const restored = importWorkspaceSession(await file.text())
+        setSession(restored)
+        setPendingCommand(null)
+        setCommandOpen(false)
+        setHistoryOpen(false)
+        setWorkspaceNotice(`Imported ${file.name}`)
+      } catch (error) {
+        setWorkspaceNotice(error instanceof Error ? error.message : 'Could not import workspace')
+      }
+    }
+    input.click()
+  }
   const runPaletteQuery = (query: string) => {
     const intent = parsePaletteIntent(query, workspace)
     switch (intent.kind) {
@@ -124,14 +157,15 @@ export default function WorkspaceApp() {
         <header className="topbar">
           <div className="crumbs"><span>{workspace.title}</span><ChevronRight size={13} /><strong>{navItems.find((item) => item.id === surface)?.label}</strong></div>
           <div className="topbar-actions">
-            <span className="saved-state"><Check size={13} /> Saved locally · v{session.past.at(-1)?.revision ?? 0}</span>
+            <span className="saved-state"><Check size={13} /> {workspaceNotice ?? `Saved locally · v${session.past.at(-1)?.revision ?? 0}`}</span>
             <div className="history-actions" aria-label="Semantic history controls">
               <button disabled={session.past.length === 0} onClick={() => setSession((current) => undoVersionedWorkspaceSession(current))} title={session.past.at(-1) ? `Undo: ${session.past.at(-1)?.summary}` : 'Nothing to undo'}>↶ <span>Undo</span></button>
               <button disabled={session.future.length === 0} onClick={() => setSession((current) => redoVersionedWorkspaceSession(current))} title={session.future[0] ? `Redo: ${session.future[0].summary}` : 'Nothing to redo'}>↷ <span>Redo</span></button>
             </div>
             <button className="secondary-button history-open-button" onClick={() => setHistoryOpen(true)} title="Semantic history (Cmd/Ctrl + Shift + H)"><Clock3 size={14} /> History</button>
             <button className="icon-button" aria-label="Toggle context" onClick={() => setContextOpen((value) => !value)}><Grid3X3 size={16} /></button>
-            <button className="secondary-button"><Share2 size={15} /> Share</button>
+            <button className="secondary-button" onClick={exportBackup}>Export</button>
+            <button className="secondary-button" onClick={importBackup}>Import</button>
             {surface === 'present' && <button className="primary-button"><Play size={14} /> Present</button>}
           </div>
         </header>
@@ -142,7 +176,7 @@ export default function WorkspaceApp() {
             {surface === 'data' && <DataSurface workspace={workspace} updateRegion={updateRegion} updateMetricFormula={updateMetricFormula} />}
             {surface === 'present' && <PresentSurface workspace={workspace} />}
           </section>
-          {contextOpen && <ContextPanel workspace={workspace} surface={surface} transactions={session.past} onClose={() => setContextOpen(false)} />}
+          {contextOpen && <ContextPanel workspace={workspace} surface={surface} transactions={session.past} onSetSourceStatus={updateSourceStatus} onClose={() => setContextOpen(false)} />}
         </div>
       </main>
 
