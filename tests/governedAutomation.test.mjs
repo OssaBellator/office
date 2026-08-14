@@ -44,3 +44,13 @@ test('automation approval requires an approver identity', () => {
   const governed = planGovernedAutomation(session, 'editor', [{ type:'chart.kind', chartId:'revenue-vs-plan', kind:'line' }])
   assert.throws(() => approveAutomation(governed, '   '), /approver identity/)
 })
+
+test('governed import plans preserve fidelity warnings for preview without changing execution', () => {
+  const session = createVersionedWorkspaceSession(cloneSeedWorkspace())
+  const warnings = ['Images are not imported yet.', 'Formula values use cached results.']
+  const governed = planGovernedAutomation(session, 'owner', [{ type:'region.update', regionId:'apac', field:'revenue', value:10 }], warnings)
+  assert.deepEqual(governed.warnings, warnings)
+  assert.notEqual(governed.warnings, warnings)
+  const next = executeGovernedAutomation(session, governed)
+  assert.equal(next.present.regions.find((row) => row.id === 'apac').revenue, 10)
+})
