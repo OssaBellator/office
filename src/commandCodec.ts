@@ -13,6 +13,7 @@ function boolean(value: unknown, field: string) { if (typeof value !== 'boolean'
 function optionalText(value: unknown, field: string) { return value === undefined ? undefined : text(value, field) }
 function oneOf<T extends string>(value: unknown, field: string, allowed: readonly T[]): T { const result=text(value,field) as T;if(!allowed.includes(result))throw new Error(`${field} must be one of: ${allowed.join(', ')}`);return result }
 function array(value: unknown, field: string) { if (!Array.isArray(value)) throw new Error(`${field} must be an array`); return value }
+function timestamp(changedAt: string | undefined) { return changedAt === undefined ? {} : { changedAt } }
 
 function parseMetric(value: unknown): Metric {
   const input=record(value)
@@ -66,9 +67,9 @@ export function parseWorkspaceCommand(value: unknown): VersionedWorkspaceCommand
     case'presentation.scene.move':return{type,sceneId:oneOf(input.sceneId,'sceneId',['thesis','performance','signal','decision'] as const),toIndex:number(input.toIndex,'toIndex'),changedAt}
     case'presentation.scene.visibility':return{type,sceneId:oneOf(input.sceneId,'sceneId',['thesis','performance','signal','decision'] as const),visible:boolean(input.visible,'visible'),changedAt}
     case'presentation.note.update':return{type,sceneId:oneOf(input.sceneId,'sceneId',['thesis','performance','signal','decision'] as const),note:text(input.note,'note'),changedAt}
-    case'metric.create':return{type,metric:parseMetric(input.metric),changedAt}
-    case'metric.remove':return{type,metricId:text(input.metricId,'metricId'),changedAt}
-    case'metric.formula':return{type,metricId:text(input.metricId,'metricId'),formula:input.formula===null?null:text(input.formula,'formula'),fallbackValue:input.fallbackValue===undefined?undefined:number(input.fallbackValue,'fallbackValue'),changedAt}
+    case'metric.create':return{type,metric:parseMetric(input.metric),...timestamp(changedAt)}
+    case'metric.remove':return{type,metricId:text(input.metricId,'metricId'),...timestamp(changedAt)}
+    case'metric.formula':return{type,metricId:text(input.metricId,'metricId'),formula:input.formula===null?null:text(input.formula,'formula'),fallbackValue:input.fallbackValue===undefined?undefined:number(input.fallbackValue,'fallbackValue'),...timestamp(changedAt)}
     case'source.status':return{type,sourceId:text(input.sourceId,'sourceId'),status:oneOf(input.status,'status',['live','stale'] as const),changedAt}
     default:throw new Error(`Unknown workspace command type: ${type}`)
   }
