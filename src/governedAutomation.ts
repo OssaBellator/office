@@ -9,6 +9,7 @@ export type GovernedAutomationPlan = {
   plan: WorkspaceAutomationPlan
   baseFingerprint: string
   governance: AutomationGovernanceDecision
+  warnings?: string[]
 }
 
 export type AutomationApproval = {
@@ -17,9 +18,9 @@ export type AutomationApproval = {
   approvedAt: string
 }
 
-export function planGovernedAutomation(session: VersionedWorkspaceSession, role: WorkspaceRole, commands: VersionedWorkspaceCommand[]): GovernedAutomationPlan {
+export function planGovernedAutomation(session: VersionedWorkspaceSession, role: WorkspaceRole, commands: VersionedWorkspaceCommand[], warnings: string[] = []): GovernedAutomationPlan {
   const plan = planWorkspaceAutomation(session, role, commands)
-  return { plan, baseFingerprint:semanticWorkspaceFingerprint(session.present), governance:assessAutomationGovernance(plan) }
+  return { plan, baseFingerprint:semanticWorkspaceFingerprint(session.present), governance:assessAutomationGovernance(plan), ...(warnings.length ? { warnings:[...warnings] } : {}) }
 }
 
 export function approveAutomation(plan: GovernedAutomationPlan, approvedBy: string): AutomationApproval {
