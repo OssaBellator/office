@@ -17,6 +17,12 @@ import {
 import { evaluateSemanticExpression } from './expressions.ts'
 import { getEditableChart, updateEditableChartKind, type EditableChartKind } from './chartModel.ts'
 import {
+  getPresentationState,
+  withPresentationState,
+  type PresentationSceneId,
+  type PresentationState,
+} from './presentationState.ts'
+import {
   getSemanticDocument,
   updateSemanticLegacyBody,
   withSemanticDocument,
@@ -43,6 +49,10 @@ export type VersionedWorkspaceCommand =
   | { type: 'annotation.update'; annotationId: string; field: 'body' | 'owner' | 'status'; value: string | BlockAnnotationStatus; changedAt?: string }
   | { type: 'annotation.remove'; annotationId: string; changedAt?: string }
   | { type: 'chart.kind'; chartId: string; kind: EditableChartKind; changedAt?: string }
+  | { type: 'presentation.replace'; value: PresentationState; changedAt?: string }
+  | { type: 'presentation.scene.move'; sceneId: PresentationSceneId; toIndex: number; changedAt?: string }
+  | { type: 'presentation.scene.visibility'; sceneId: PresentationSceneId; visible: boolean; changedAt?: string }
+  | { type: 'presentation.note.update'; sceneId: PresentationSceneId; note: string; changedAt?: string }
   | { type: 'metric.formula'; metricId: string; formula: string | null; fallbackValue?: number; changedAt?: string }
   | { type: 'source.status'; sourceId: string; status: 'live' | 'stale'; changedAt?: string }
 
@@ -54,6 +64,10 @@ function directMutation(workspace: WorkspaceState, summary: string, changedAt: s
 
 function semanticMutation(workspace: WorkspaceState, semantic: SemanticDocumentState, summary: string, changedAt: string, changedObjectIds: string[]) {
   return directMutation(workspace, summary, changedAt, changedObjectIds, withSemanticDocument(workspace, semantic))
+}
+
+function presentationMutation(workspace: WorkspaceState, state: PresentationState, summary: string, changedAt: string, sceneIds: PresentationSceneId[]) {
+  return directMutation(workspace, summary, changedAt, sceneIds.map((id) => `scene:${id}`), withPresentationState(workspace, state))
 }
 
 function syncMetricFormulaEdges(workspace: WorkspaceState, metricId: string, formula: string | null) {
@@ -212,6 +226,39 @@ export function runVersionedCommand(workspace: WorkspaceState, command: Versione
       const next = updateEditableChartKind(workspace, command.chartId, command.kind)
       return directMutation(workspace, `${chart.label} changed to ${command.kind === 'line' ? 'line' : 'grouped bars'}`, command.changedAt ?? 'just now', [`chart:${command.chartId}`], next)
     }
+    case 'presentation.replace': {
+      return presentationMutation(workspace, command.value, 'Board narrative structure restored', command.changedAt ?? 'just now', command.value.order)
+    }
+    case 'presentation.scene.move': {
+      const state = getPresentationState(workspace)
+      const fromIndex = state.order.indexOf(command.sceneId)
+      if (fromIndex < 0) throw new Error(`Unknown presentation scene: ${command.sceneId}`)
+      const [scene] = state.order.splice(fromIndex, 1)
+      const toIndex = Math.max(0, Math.min(command.toIndex, state.order.length))
+      state.order.splice(toIndex, 0, scene)
+      return presentationMutation(workspace, state, `Moved ${command.sceneId} scene`, command.changedAt ?? 'just now', [command.sceneId])
+    }
+    case 'presentation.scene.visibility': {
+      const state = getPresentationState(workspace)
+      if (!state.order.includes(command.sceneId)) throw new Error(`Unknown presentation scene: ${command.sceneId}`)
+      const hidden = new Set(state.hiddenSceneIds)
+      if (command.visible) hidden.delete(command.sceneId)
+      else {
+        const visibleCount = state.order.filter((id) => !hidden.has(id)).length
+        if (!hidden.has(command.sceneId) && visibleCount <= 1) throw new Error('A presentation must keep at least one visible scene')
+        hidden.add(command.sceneId)
+      }
+      state.hiddenSceneIds = [...hidden]
+      return presentationMutation(workspace, state, `${command.visible ? 'Showed' : 'Hid'} ${command.sceneId} scene`, command.changedAt ?? 'just now', [command.sceneId])
+    }
+    case 'presentation.note.update': {
+      const state = getPresentationState(workspace)
+      if (!state.order.includes(command.sceneId)) throw new Error(`Unknown presentation scene: ${command.sceneId}`)
+      const note = command.note.trim()
+      if (note) state.notes[command.sceneId] = command.note
+      else delete state.notes[command.sceneId]
+      return presentationMutation(workspace, state, `Updated ${command.sceneId} speaker note`, command.changedAt ?? 'just now', [command.sceneId])
+    }
     case 'metric.formula': return updateMetricFormula(workspace, command.metricId, command.formula, command.fallbackValue, command.changedAt)
     case 'source.status': {
       const existing = workspace.sources.find((source) => source.id === command.sourceId)
@@ -243,6 +290,10 @@ export function versionedCommandIsNoop(workspace: WorkspaceState, command: Versi
     case 'annotation.update': return getSemanticDocument(workspace).annotations.find((annotation) => annotation.id === command.annotationId)?.[command.field] === command.value
     case 'annotation.remove': return !getSemanticDocument(workspace).annotations.some((annotation) => annotation.id === command.annotationId)
     case 'chart.kind': return getEditableChart(workspace, command.chartId).kind === command.kind
+    case 'presentation.replace': return JSON.stringify(getPresentationState(workspace)) === JSON.stringify(command.value)
+    case 'presentation.scene.move': return getPresentationState(workspace).order.indexOf(command.sceneId) === command.toIndex
+    case 'presentation.scene.visibility': return getPresentationState(workspace).hiddenSceneIds.includes(command.sceneId) === !command.visible
+    case 'presentation.note.update': return (getPresentationState(workspace).notes[command.sceneId] ?? '') === command.note
     case 'metric.formula': return (workspace.metrics.find((candidate) => candidate.id === command.metricId)?.formula ?? null) === command.formula
     case 'source.status': return workspace.sources.find((source) => source.id === command.sourceId)?.status === command.status
   }
