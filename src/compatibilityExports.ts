@@ -1,6 +1,6 @@
 import { formatMetric, type WorkspaceState } from './model.ts'
 import { buildPresentationScenes } from './presentationModel.ts'
-import { getSemanticDocument, resolveSemanticClaim } from './semanticDocument.ts'
+import { getSemanticDocument, resolveSemanticClaim, type SemanticDocumentBlock } from './semanticDocument.ts'
 
 export type WorkspaceExportBundle = {
   'strategy.md': string
@@ -15,34 +15,17 @@ function csvCell(value: string | number) {
   return `"${text.replace(/"/g, '""')}"`
 }
 
-function csv(rows: Array<Array<string | number>>) {
-  return `${rows.map((row) => row.map(csvCell).join(',')).join('\n')}\n`
-}
-
-export function exportRegionsCsv(workspace: WorkspaceState) {
-  return csv([
-    ['Region','Revenue','Growth','Margin'],
-    ...workspace.regions.map((row) => [row.region,row.revenue,row.growth,row.margin]),
-  ])
-}
-
-export function exportPlanCsv(workspace: WorkspaceState) {
-  return csv([
-    ['Region','Revenue'],
-    ...workspace.plans.map((row) => [row.region,row.revenue]),
-  ])
-}
-
-function annotationMarkdown(kind: string, status: string, owner: string, body: string) {
-  const marker = kind === 'task' ? (status === 'resolved' ? '[x]' : '[ ]') : kind === 'approval' ? (status === 'approved' ? '✅' : '⏳') : '💬'
-  return `- ${marker} **${kind}** · ${owner} · ${status}: ${body}`
-}
+function csv(rows: Array<Array<string | number>>) { return `${rows.map((row) => row.map(csvCell).join(',')).join('\n')}\n` }
+export function exportRegionsCsv(workspace: WorkspaceState) { return csv([['Region','Revenue','Growth','Margin'],...workspace.regions.map((row) => [row.region,row.revenue,row.growth,row.margin])]) }
+export function exportPlanCsv(workspace: WorkspaceState) { return csv([['Region','Revenue'],...workspace.plans.map((row) => [row.region,row.revenue])]) }
+function annotationMarkdown(kind: string, status: string, owner: string, body: string) { const marker = kind === 'task' ? (status === 'resolved' ? '[x]' : '[ ]') : kind === 'approval' ? (status === 'approved' ? '✅' : '⏳') : '💬'; return `- ${marker} **${kind}** · ${owner} · ${status}: ${body}` }
+function paragraphMarkdown(block: Extract<SemanticDocumentBlock,{type:'paragraph'}>) { if(block.style==='heading-1')return`# ${block.text}`;if(block.style==='heading-2')return`## ${block.text}`;if(block.style==='heading-3')return`### ${block.text}`;if(block.style==='bullet')return`- ${block.text}`;if(block.style==='numbered')return`1. ${block.text}`;return block.text }
 
 export function exportStrategyMarkdown(workspace: WorkspaceState) {
   const semantic = getSemanticDocument(workspace)
   const lines: string[] = [`# ${workspace.document.title}`, '', workspace.document.summary, '']
   for (const block of semantic.blocks) {
-    if (block.type === 'paragraph') lines.push(block.text, '')
+    if (block.type === 'paragraph') lines.push(paragraphMarkdown(block), '')
     if (block.type === 'claim') {
       const claim = semantic.claims.find((item) => item.id === block.claimId)
       if (claim) {
@@ -82,7 +65,9 @@ export function exportPresentationMarkdown(workspace: WorkspaceState) {
   const scenes = buildPresentationScenes(workspace)
   const lines = [`# ${workspace.title} — Board narrative`, '']
   for (const scene of scenes) {
-    lines.push(`## ${scene.eyebrow} — ${scene.title}`, '', `Source: ${scene.source}`, '', `Speaker note: ${scene.note}`, '')
+    lines.push(`## ${scene.eyebrow} — ${scene.title}`, '')
+    if(scene.body?.length)lines.push(...scene.body.map((item)=>`- ${item}`),'')
+    lines.push(`Source: ${scene.source}`, '', `Speaker note: ${scene.note}`, '')
   }
   return `${lines.join('\n').trim()}\n`
 }
