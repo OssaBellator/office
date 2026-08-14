@@ -83,9 +83,13 @@ function edge(from: string, to: string, description: string): DependencyEdge {
   return { from, to, relation: 'renders', description }
 }
 
+function isSemanticObjectId(id: string) {
+  return id.startsWith('block:') || id.startsWith('claim:') || id.startsWith('citation:')
+}
+
 function ensureSemanticGraph(graph: WorkspaceGraph, semantic: SemanticDocumentState): WorkspaceGraph {
-  const objects = [...graph.objects]
-  const edges = [...graph.edges]
+  const objects = graph.objects.filter((object) => !isSemanticObjectId(object.id))
+  const edges = graph.edges.filter((item) => !isSemanticObjectId(item.from) && !isSemanticObjectId(item.to))
   const objectIds = new Set(objects.map((object) => object.id))
   const edgeKeys = new Set(edges.map((item) => `${item.from}|${item.to}|${item.relation}`))
   const addObject = (object: WorkspaceObject) => { if (!objectIds.has(object.id)) { objectIds.add(object.id); objects.push(object) } }
