@@ -33,6 +33,11 @@ export function compareWorkspaceStates(before: WorkspaceState, after: WorkspaceS
     if(!l||!r){add(diffs,after,id,'citation',l?JSON.stringify(l):null,r?JSON.stringify(r):null);continue}
     add(diffs,after,id,'label',l.label,r.label);add(diffs,after,id,'locator',l.locator,r.locator);add(diffs,after,id,'source',l.sourceId,r.sourceId);add(diffs,after,id,'evidence',l.evidenceObjectId,r.evidenceObjectId)
   }
+  for (const id of new Set([...beforeSemantic.annotations.map((x)=>x.id),...afterSemantic.annotations.map((x)=>x.id)])) {
+    const l=beforeSemantic.annotations.find((x)=>x.id===id),r=afterSemantic.annotations.find((x)=>x.id===id)
+    if(!l||!r){add(diffs,after,id,'annotation',l?JSON.stringify(l):null,r?JSON.stringify(r):null);continue}
+    add(diffs,after,id,'body',l.body,r.body);add(diffs,after,id,'owner',l.owner,r.owner);add(diffs,after,id,'status',l.status,r.status);add(diffs,after,id,'block',l.blockId,r.blockId)
+  }
 
   for (const id of new Set([...before.metrics.map((x)=>x.id),...after.metrics.map((x)=>x.id)])) {
     const l=before.metrics.find((x)=>x.id===id),r=after.metrics.find((x)=>x.id===id); if(!l||!r){add(diffs,after,`metric:${id}`,'object',l?JSON.stringify(l):null,r?JSON.stringify(r):null);continue}
