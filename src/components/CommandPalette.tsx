@@ -1,5 +1,6 @@
 import { CheckCircle2, ChevronRight, Command, LayoutTemplate, RefreshCw, Sparkles, Table2 } from 'lucide-react'
-import type { Surface, WorkspaceCommandPreview } from '../model'
+import type { Surface } from '../model'
+import type { WorkspaceCommandPreview } from '../commandPreview'
 
 function displayValue(value: string | number | null) {
   if (value === null) return '—'
