@@ -25,7 +25,10 @@ export function exportStrategyMarkdown(workspace: WorkspaceState) {
   const semantic = getSemanticDocument(workspace)
   const lines: string[] = [`# ${workspace.document.title}`, '', workspace.document.summary, '']
   for (const block of semantic.blocks) {
-    if (block.type === 'paragraph') lines.push(paragraphMarkdown(block), '')
+    if (block.type === 'paragraph') {
+      lines.push(paragraphMarkdown(block), '')
+      if (block.source) lines.push(`_Imported from ${block.source}_`, '')
+    }
     if (block.type === 'claim') {
       const claim = semantic.claims.find((item) => item.id === block.claimId)
       if (claim) {
