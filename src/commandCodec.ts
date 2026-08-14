@@ -42,7 +42,8 @@ function parseBlock(value: unknown): SemanticDocumentBlock {
   const input = record(value), id=text(input.id,'block.id'), type=oneOf(input.type,'block.type',['paragraph','claim','metric-embed','decision-embed'] as const)
   if(type==='paragraph'){
     const style=input.style===undefined?undefined:oneOf(input.style,'block.style',['body','heading-1','heading-2','heading-3','bullet','numbered'] as const) as SemanticParagraphStyle
-    return{id,type,text:text(input.text,'block.text'),...(style?{style}:{})}
+    const source=optionalText(input.source,'block.source')
+    return{id,type,text:text(input.text,'block.text'),...(style?{style}:{}),...(source?{source}:{})}
   }
   if(type==='claim')return{id,type,claimId:text(input.claimId,'block.claimId')}
   if(type==='metric-embed')return{id,type,label:text(input.label,'block.label'),metricIds:array(input.metricIds,'block.metricIds').map((item,index)=>text(item,`block.metricIds[${index}]`))}
