@@ -1,4 +1,5 @@
 import type { WorkspaceState } from './model.ts'
+import { getImportedTables } from './importedTables.ts'
 import { getPresentationState } from './presentationState.ts'
 import { getSemanticDocument } from './semanticDocument.ts'
 
@@ -20,8 +21,10 @@ export function compareWorkspaceStates(before: WorkspaceState, after: WorkspaceS
     const l=beforeSemantic.blocks.find((x)=>x.id===id),r=afterSemantic.blocks.find((x)=>x.id===id)
     if(!l||!r){add(diffs,after,id,'block',l?JSON.stringify(l):null,r?JSON.stringify(r):null);continue}
     add(diffs,after,id,'type',l.type,r.type)
-    if(l.type==='paragraph'&&r.type==='paragraph')add(diffs,after,id,'text',l.text,r.text)
-    else add(diffs,after,id,'content',JSON.stringify(l),JSON.stringify(r))
+    if(l.type==='paragraph'&&r.type==='paragraph'){
+      add(diffs,after,id,'text',l.text,r.text)
+      add(diffs,after,id,'style',l.style??'body',r.style??'body')
+    } else add(diffs,after,id,'content',JSON.stringify(l),JSON.stringify(r))
     add(diffs,after,id,'position',beforeSemantic.blocks.findIndex((x)=>x.id===id),afterSemantic.blocks.findIndex((x)=>x.id===id))
   }
   for (const id of new Set([...beforeSemantic.claims.map((x)=>x.id),...afterSemantic.claims.map((x)=>x.id)])) {
@@ -45,6 +48,19 @@ export function compareWorkspaceStates(before: WorkspaceState, after: WorkspaceS
   add(diffs, after, 'presentation:story', 'hiddenScenes', beforePresentation.hiddenSceneIds.join(', '), afterPresentation.hiddenSceneIds.join(', '))
   for (const id of new Set([...beforePresentation.order,...afterPresentation.order])) {
     add(diffs, after, `scene:${id}`, 'speakerNote', beforePresentation.notes[id] ?? null, afterPresentation.notes[id] ?? null)
+  }
+  const beforeImportedScenes=beforePresentation.importedScenes??[],afterImportedScenes=afterPresentation.importedScenes??[]
+  for(const id of new Set([...beforeImportedScenes.map((scene)=>scene.id),...afterImportedScenes.map((scene)=>scene.id)])){
+    const l=beforeImportedScenes.find((scene)=>scene.id===id),r=afterImportedScenes.find((scene)=>scene.id===id)
+    if(!l||!r){add(diffs,after,`scene:${id}`,'importedSlide',l?JSON.stringify(l):null,r?JSON.stringify(r):null);continue}
+    add(diffs,after,`scene:${id}`,'title',l.title,r.title);add(diffs,after,`scene:${id}`,'body',l.body.join('\n'),r.body.join('\n'));add(diffs,after,`scene:${id}`,'source',l.source,r.source);add(diffs,after,`scene:${id}`,'importedNote',l.note??null,r.note??null)
+  }
+
+  const beforeTables=getImportedTables(before),afterTables=getImportedTables(after)
+  for(const id of new Set([...beforeTables.map((table)=>table.id),...afterTables.map((table)=>table.id)])){
+    const l=beforeTables.find((table)=>table.id===id),r=afterTables.find((table)=>table.id===id)
+    if(!l||!r){add(diffs,after,`table:${id}`,'importedTable',l?JSON.stringify(l):null,r?JSON.stringify(r):null);continue}
+    add(diffs,after,`table:${id}`,'label',l.label,r.label);add(diffs,after,`table:${id}`,'columns',JSON.stringify(l.columns),JSON.stringify(r.columns));add(diffs,after,`table:${id}`,'rows',JSON.stringify(l.rows),JSON.stringify(r.rows));add(diffs,after,`table:${id}`,'source',l.source,r.source)
   }
 
   for (const id of new Set([...before.charts.map((x)=>x.id),...after.charts.map((x)=>x.id)])) {
