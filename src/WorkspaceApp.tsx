@@ -20,7 +20,6 @@ import {
   createWorkspaceSession,
   executeWorkspaceCommand,
   hydrateWorkspace,
-  previewWorkspaceCommand,
   redoWorkspaceSession,
   undoWorkspaceSession,
   type RegionRow,
@@ -29,6 +28,7 @@ import {
   type WorkspaceSession,
   type WorkspaceState,
 } from './model'
+import { previewWorkspaceCommand } from './commandPreview'
 import { CommandPalette } from './components/CommandPalette'
 import { ContextPanel } from './components/ContextPanel'
 import { DataSurface } from './components/DataSurface'
