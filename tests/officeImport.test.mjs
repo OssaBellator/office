@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { deflateRawSync } from 'node:zlib'
+import { getImportedTableFormula } from '../src/importedTables.ts'
 import { cloneSeedWorkspace } from '../src/model.ts'
 import { planDocxImport, planPptxImport, planXlsxImport } from '../src/officeImportPlanner.ts'
 
@@ -30,6 +31,7 @@ test('DOCX import becomes editable semantic document blocks with Word and Google
   const plan=await planDocxImport(cloneSeedWorkspace(),bytes,'strategy.docx')
   assert.equal(plan.kind,'docx');assert.equal(plan.commands.length,3)
   assert.equal(plan.commands[0].block.style,'heading-1')
+  assert.equal(plan.commands[0].block.source,'strategy.docx')
   assert.equal(plan.commands[1].block.style,'heading-2')
   assert.equal(plan.commands[2].block.text,'Body text')
 })
@@ -74,7 +76,7 @@ test('PPTX and DOCX imports surface unsupported media as explicit warnings',asyn
   assert.equal(doc.warnings.some((warning)=>/images/.test(warning)),true)
 })
 
-test('XLSX import maps compatible actual and plan sheets to semantic row updates and warns about cached formulas',async()=>{
+test('XLSX import updates compatible finance sheets while preserving original formula metadata',async()=>{
   const bytes=zip({
     'xl/workbook.xml':'<workbook><sheets><sheet name="Actuals" sheetId="1" r:id="rId1"/><sheet name="Plan" sheetId="2" r:id="rId2"/></sheets></workbook>',
     'xl/_rels/workbook.xml.rels':'<Relationships><Relationship Id="rId1" Target="worksheets/sheet1.xml"/><Relationship Id="rId2" Target="worksheets/sheet2.xml"/></Relationships>',
@@ -84,7 +86,13 @@ test('XLSX import maps compatible actual and plan sheets to semantic row updates
   const plan=await planXlsxImport(cloneSeedWorkspace(),bytes,'model.xlsx')
   assert.equal(plan.commands.some((command)=>command.type==='region.update'&&command.field==='growth'&&command.value===32),true)
   assert.equal(plan.commands.some((command)=>command.type==='plan.update'&&command.value===10.5),true)
-  assert.equal(plan.warnings.some((warning)=>/cached values/.test(warning)),true)
+  const imported=plan.commands.find((command)=>command.type==='data.imported.replace')
+  assert.ok(imported)
+  const actuals=imported.tables.find((table)=>table.label==='Actuals')
+  assert.ok(actuals)
+  assert.equal(actuals.rows[0].values.revenue,10)
+  assert.equal(getImportedTableFormula(actuals,actuals.rows[0].id,'revenue'),'5+5')
+  assert.equal(plan.warnings.some((warning)=>/formula text and cached values are preserved/.test(warning)),true)
 })
 
 test('recognized Excel sheets keep foreign columns while also updating the live semantic model',async()=>{
@@ -100,7 +108,7 @@ test('recognized Excel sheets keep foreign columns while also updating the live 
   const table=imported.tables.at(-1)
   assert.equal(table.columns.some((column)=>column.label==='Executive note'),true)
   assert.equal(table.rows[0].values['executive-note'],'Partner-led upside')
-  assert.equal(plan.warnings.some((warning)=>/foreign columns or schemas/.test(warning)),true)
+  assert.equal(plan.warnings.some((warning)=>/foreign columns, schemas, or formulas/.test(warning)),true)
 })
 
 test('unrecognized Excel or Google Sheets tabs are retained as generic Frame Data tables',async()=>{
