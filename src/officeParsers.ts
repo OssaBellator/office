@@ -103,10 +103,28 @@ function docxStyleKind(style: string): ImportedDocumentBlock['kind'] | null {
   return null
 }
 
+export function parseDocxTables(documentXml: string): ImportedSheet[] {
+  const tables: ImportedSheet[] = []
+  for (const [tableIndex, tableMatch] of [...documentXml.matchAll(/<w:tbl\b[^>]*>([\s\S]*?)<\/w:tbl>/gi)].entries()) {
+    const rows: Array<Array<string | number | null>> = []
+    for (const rowMatch of tableMatch[1].matchAll(/<w:tr\b[^>]*>([\s\S]*?)<\/w:tr>/gi)) {
+      const row: Array<string | number | null> = []
+      for (const cellMatch of rowMatch[1].matchAll(/<w:tc\b[^>]*>([\s\S]*?)<\/w:tc>/gi)) {
+        const paragraphTexts = [...cellMatch[1].matchAll(/<w:p\b[^>]*>([\s\S]*?)<\/w:p>/gi)].map((match) => wordParagraphText(match[1])).filter(Boolean)
+        row.push(paragraphTexts.length ? paragraphTexts.join('\n') : wordParagraphText(cellMatch[1]))
+      }
+      if (row.some((cell) => String(cell ?? '').trim())) rows.push(row)
+    }
+    if (rows.length) tables.push({ name:`Document table ${tableIndex + 1}`, rows })
+  }
+  return tables
+}
+
 export function parseDocxDocumentXml(documentXml: string, numberingXml: string | null = null): ImportedDocumentBlock[] {
   const numbering = parseDocxNumbering(numberingXml)
   const blocks: ImportedDocumentBlock[] = []
-  for (const match of documentXml.matchAll(/<w:p\b[^>]*>([\s\S]*?)<\/w:p>/gi)) {
+  const documentWithoutTables = documentXml.replace(/<w:tbl\b[^>]*>[\s\S]*?<\/w:tbl>/gi, '')
+  for (const match of documentWithoutTables.matchAll(/<w:p\b[^>]*>([\s\S]*?)<\/w:p>/gi)) {
     const fragment = match[1]
     const text = wordParagraphText(fragment)
     if (!text) continue
