@@ -1,6 +1,7 @@
 import {
   appendDocumentText,
   setDecisionStatus,
+  updatePlanField,
   updateRegionField,
   type WorkspaceCommand,
   type WorkspaceImpact,
@@ -27,12 +28,10 @@ function objectLabel(workspace: WorkspaceState, objectId: string) {
 
 function runCommand(workspace: WorkspaceState, command: WorkspaceCommand): WorkspaceMutationResult {
   switch (command.type) {
-    case 'region.update':
-      return updateRegionField(workspace, command.regionId, command.field, command.value, command.changedAt)
-    case 'decision.status':
-      return setDecisionStatus(workspace, command.decisionId, command.status, command.changedAt)
-    case 'document.append':
-      return appendDocumentText(workspace, command.text, command.changedAt)
+    case 'region.update': return updateRegionField(workspace, command.regionId, command.field, command.value, command.changedAt)
+    case 'plan.update': return updatePlanField(workspace, command.planId, command.field, command.value, command.changedAt)
+    case 'decision.status': return setDecisionStatus(workspace, command.decisionId, command.status, command.changedAt)
+    case 'document.append': return appendDocumentText(workspace, command.text, command.changedAt)
   }
 }
 
@@ -42,72 +41,45 @@ function buildDiffs(before: WorkspaceState, after: WorkspaceState, command: Work
       const beforeRow = before.regions.find((row) => row.id === command.regionId)
       const afterRow = after.regions.find((row) => row.id === command.regionId)
       if (!beforeRow || !afterRow) return []
-
       const diffs: SemanticDiff[] = []
-      if (beforeRow[command.field] !== afterRow[command.field]) {
-        diffs.push({
-          objectId: `region:${command.regionId}`,
-          label: objectLabel(after, `region:${command.regionId}`),
-          field: String(command.field),
-          before: beforeRow[command.field],
-          after: afterRow[command.field],
-        })
-      }
-
+      if (beforeRow[command.field] !== afterRow[command.field]) diffs.push({ objectId: `region:${command.regionId}`, label: objectLabel(after, `region:${command.regionId}`), field: String(command.field), before: beforeRow[command.field], after: afterRow[command.field] })
       if (command.field === 'revenue') {
         const beforeMetric = before.metrics.find((metric) => metric.id === 'revenue')
         const afterMetric = after.metrics.find((metric) => metric.id === 'revenue')
-        if (beforeMetric && afterMetric && beforeMetric.value !== afterMetric.value) {
-          diffs.push({
-            objectId: 'metric:revenue',
-            label: objectLabel(after, 'metric:revenue'),
-            field: 'value',
-            before: beforeMetric.value,
-            after: afterMetric.value,
-          })
-        }
+        if (beforeMetric && afterMetric && beforeMetric.value !== afterMetric.value) diffs.push({ objectId: 'metric:revenue', label: objectLabel(after, 'metric:revenue'), field: 'value', before: beforeMetric.value, after: afterMetric.value })
       }
-
+      return diffs
+    }
+    case 'plan.update': {
+      const beforeRow = before.plans.find((row) => row.id === command.planId)
+      const afterRow = after.plans.find((row) => row.id === command.planId)
+      if (!beforeRow || !afterRow) return []
+      const diffs: SemanticDiff[] = []
+      if (beforeRow[command.field] !== afterRow[command.field]) diffs.push({ objectId: `plan:${command.planId}`, label: objectLabel(after, `plan:${command.planId}`), field: String(command.field), before: beforeRow[command.field], after: afterRow[command.field] })
+      if (command.field === 'revenue') {
+        const beforeMetric = before.metrics.find((metric) => metric.id === 'planRevenue')
+        const afterMetric = after.metrics.find((metric) => metric.id === 'planRevenue')
+        if (beforeMetric && afterMetric && beforeMetric.value !== afterMetric.value) diffs.push({ objectId: 'metric:planRevenue', label: objectLabel(after, 'metric:planRevenue'), field: 'value', before: beforeMetric.value, after: afterMetric.value })
+      }
       return diffs
     }
     case 'decision.status': {
       const beforeDecision = before.decisions.find((decision) => decision.id === command.decisionId)
       const afterDecision = after.decisions.find((decision) => decision.id === command.decisionId)
       if (!beforeDecision || !afterDecision || beforeDecision.status === afterDecision.status) return []
-      return [{
-        objectId: `decision:${command.decisionId}`,
-        label: objectLabel(after, `decision:${command.decisionId}`),
-        field: 'status',
-        before: beforeDecision.status,
-        after: afterDecision.status,
-      }]
+      return [{ objectId: `decision:${command.decisionId}`, label: objectLabel(after, `decision:${command.decisionId}`), field: 'status', before: beforeDecision.status, after: afterDecision.status }]
     }
     case 'document.append':
       if (!command.text.trim()) return []
-      return [{
-        objectId: 'document:strategy',
-        label: objectLabel(after, 'document:strategy'),
-        field: 'append',
-        before: null,
-        after: command.text,
-      }]
+      return [{ objectId: 'document:strategy', label: objectLabel(after, 'document:strategy'), field: 'append', before: null, after: command.text }]
   }
 }
 
 export function previewWorkspaceCommand(workspace: WorkspaceState, command: WorkspaceCommand): WorkspaceCommandPreview {
   const result = runCommand(workspace, command)
-  return {
-    ...result,
-    command,
-    diffs: buildDiffs(workspace, result.workspace, command),
-  }
+  return { ...result, command, diffs: buildDiffs(workspace, result.workspace, command) }
 }
 
 export function summarizeImpacts(impacts: WorkspaceImpact[]) {
-  return impacts.map((impact) => ({
-    id: impact.id,
-    label: impact.label,
-    surfaces: impact.surfaces,
-    reason: impact.reason,
-  }))
+  return impacts.map((impact) => ({ id: impact.id, label: impact.label, surfaces: impact.surfaces, reason: impact.reason }))
 }
