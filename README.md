@@ -2,7 +2,7 @@
 
 Frame is an experimental productivity workspace that treats documents, data, and presentations as different views over the same structured work.
 
-This repository contains a local-first React prototype plus a testable workspace engine for shared objects, dependency lineage, semantic formulas, reversible commands, and change history.
+This repository contains a local-first React prototype plus a testable workspace engine for shared objects, dependency lineage, semantic formulas, reversible commands, previews, and durable semantic history.
 
 ## What is implemented
 
@@ -22,9 +22,10 @@ This repository contains a local-first React prototype plus a testable workspace
 - **Cross-surface propagation**: changing regional revenue recalculates the shared Q2 revenue metric, which immediately updates Docs and Present.
 - **Reversible semantic command sessions** for model edits, decisions, and AI-style document actions.
 - **Undo/Redo controls** in the workspace shell plus `Cmd/Ctrl + Z` and `Cmd/Ctrl + Shift + Z` when focus is outside a text editor. Native text-field undo remains untouched.
-- **Previewable semantic actions**: command-palette actions can show field-level before/after diffs and downstream objects before the user applies them.
+- **Previewable semantic actions**: command-palette actions show field-level before/after diffs and downstream objects before the user applies them.
+- **Durable local semantic sessions**: current state, undo history, and redo branches survive reloads, while older workspace-only local state is migrated forward.
+- **Semantic history timeline** in Context showing recent structured transactions, semantic change counts, and downstream impact counts.
 - **Command palette** (`Cmd/Ctrl + K`) with deterministic prototype actions for navigating, adding evidence, approving a shared decision, and resetting the demo.
-- **Local persistence** through `localStorage`, including migration of older saved prototype state into the newer workspace schema.
 
 ## Run locally
 
@@ -39,7 +40,7 @@ npm run dev
 
 GitHub Actions is intentionally not used while hosted Actions usage is unavailable. The repository's primary validation path is local.
 
-The core model tests have no third-party test-runner dependency and use Node's built-in test runner:
+The core tests have no third-party test-runner dependency and use Node's built-in test runner:
 
 ```bash
 npm test
@@ -63,7 +64,7 @@ Run tests, TypeScript validation, and the production Vite build:
 npm run verify
 ```
 
-The committed core suite now has **19 tests** across semantic formulas, metric recalculation, transitive dependency propagation, upstream/downstream lineage, decision propagation, reversible undo/redo sessions, AI-style document changes, command-preview diffs, downstream impact previews, legacy workspace hydration, formatting, and invalid mutation/reference failures.
+The committed suite now has **22 tests** across semantic formulas, metric recalculation, transitive dependency propagation, upstream/downstream lineage, decision propagation, reversible undo/redo sessions, AI-style document changes, command-preview diffs, downstream impact previews, session persistence, undo/redo persistence, legacy snapshot hydration, formatting, and invalid mutation/reference failures.
 
 ## Current architecture
 
@@ -74,22 +75,25 @@ src/
     DocsSurface.tsx             Document surface
     DataSurface.tsx             Grid, Model, and Analyse modes
     PresentSurface.tsx          Storyboard/presentation surface
-    ContextPanel.tsx            Provenance and activity context
+    ContextPanel.tsx            Provenance, semantic history, and activity context
     CommandPalette.tsx          Deterministic actions and preview UI
   commandPreview.ts             Pure semantic diff/impact preview engine
+  sessionStore.ts               Durable local session hydration/serialization
   formulas.ts                   Typed semantic formula parser/evaluator
   model.ts                      Workspace graph, schemas, lineage, commands, history
   main.tsx                      React entrypoint
   styles.css                    Base product visual system
-  model-view.css                Model, history, and preview styling
+  model-view.css                Model, history-control, and preview styling
+  history.css                   Semantic history timeline styling
 
 tests/
   formulas.test.mjs
   model.test.mjs
   preview.test.mjs
+  sessionStore.test.mjs
 ```
 
-The React layer delegates shared-object mutations to the workspace engine. Direct long-form text editing remains intentionally native to the editor surface, while structured/AI-like actions are previewed before being applied as reversible semantic commands.
+The React layer delegates shared-object mutations to the workspace engine. Direct long-form text editing remains intentionally native to the editor surface, while structured/AI-like actions are previewed before being applied as reversible semantic commands. The semantic session itself is now persisted locally so structured history survives reloads.
 
 ## Product principles encoded in the prototype
 
@@ -99,15 +103,17 @@ The React layer delegates shared-object mutations to the workspace engine. Direc
 4. **Meaning before coordinates.** Data formulas reference tables and fields such as `Regions.Revenue`, not accidental cell positions.
 5. **Inspectable automation.** AI-like actions expose proposed semantic changes and downstream impact before applying them.
 6. **Reversible by default.** Structured actions become undoable transactions rather than silent destructive edits.
-7. **Compatibility later, native model first.** DOCX/XLSX/PPTX import/export will matter, but the internal model should not inherit their limitations.
+7. **History is part of the workspace.** Semantic undo/redo state survives reloads instead of existing only in ephemeral UI state.
+8. **Compatibility later, native model first.** DOCX/XLSX/PPTX import/export will matter, but the internal model should not inherit their limitations.
 
 ## Suggested next milestones
 
-### 1. Semantic history and diffs
+### 1. Semantic versioning
 
-- Persistent transaction metadata alongside workspace state
-- Human-readable history browser using semantic diffs
-- Compare any two semantic versions
+- Stable globally unique transaction/event IDs instead of stack-position IDs
+- Expand the Context timeline into a full history browser
+- Human-readable compare view between any two semantic versions
+- Restore/revert a selected historical transaction as a new transaction
 - Merge formula dependencies directly into graph edges
 - Stronger source/provenance freshness state
 
@@ -141,7 +147,7 @@ The React layer delegates shared-object mutations to the workspace engine. Direc
 - Server-backed workspace persistence
 - Authentication and permissions
 - Realtime multiplayer/CRDT layer
-- Durable semantic version history
+- Durable server-side semantic version history
 - Export/import adapters
 
 ## Status
