@@ -12,6 +12,8 @@ import { exportPlanCsv, exportPresentationMarkdown, exportRegionsCsv, exportStra
 import { planPlanCsvImport, planRegionsCsvImport } from './csvImportPlanner'
 import { planWorkspaceAutomation, type WorkspaceAutomationPlan } from './automationPlan'
 import { locateWorkspaceObject } from './workspaceNavigation'
+import { assessWorkspaceReadiness } from './workspaceDiagnostics'
+import { getDocumentReviewGate } from './reviewWorkflow'
 import {
   createVersionedWorkspaceSession,
   executeVersionedWorkspaceCommand,
@@ -32,6 +34,7 @@ import { DocsSurface } from './components/DocsSurface'
 import { HistoryBrowser } from './components/HistoryBrowser'
 import { PresentSurface } from './components/PresentSurface'
 import { PresentationPlayer } from './components/PresentationPlayer'
+import { PresentationReadinessDialog } from './components/PresentationReadinessDialog'
 import { WorkspaceTransferDialog, type WorkspaceTransferMode } from './components/WorkspaceTransferDialog'
 import './model-view.css'
 import './history-browser.css'
@@ -83,11 +86,14 @@ export default function WorkspaceApp() {
   const [historyOpen, setHistoryOpen] = useState(false)
   const [workspaceNotice, setWorkspaceNotice] = useState<string | null>(null)
   const [presentationOpen, setPresentationOpen] = useState(false)
+  const [presentationGateOpen, setPresentationGateOpen] = useState(false)
   const [selectedObjectId, setSelectedObjectId] = useState<string | null>(null)
   const [transferMode, setTransferMode] = useState<WorkspaceTransferMode | null>(null)
   const [pendingAutomation, setPendingAutomation] = useState<WorkspaceAutomationPlan | null>(null)
   const workspace = session.present
   const commandPreview = pendingCommand ? previewVersionedCommand(workspace, pendingCommand) : null
+  const readiness = assessWorkspaceReadiness(workspace)
+  const reviewGate = getDocumentReviewGate(workspace)
 
   useEffect(() => {
     localStorage.setItem(SESSION_STORAGE_KEY, serializeWorkspaceSession(session))
@@ -106,7 +112,7 @@ export default function WorkspaceApp() {
         return
       }
       if (event.key === 'Escape') {
-        setPendingCommand(null); setCommandOpen(false); setHistoryOpen(false); setPresentationOpen(false); setTransferMode(null); setPendingAutomation(null)
+        setPendingCommand(null); setCommandOpen(false); setHistoryOpen(false); setPresentationOpen(false); setPresentationGateOpen(false); setTransferMode(null); setPendingAutomation(null)
       }
     }
     window.addEventListener('keydown', onKeyDown)
@@ -129,7 +135,7 @@ export default function WorkspaceApp() {
   const closeCommandPalette = () => { setPendingCommand(null); setCommandOpen(false) }
   const openCommandPalette = () => { setPendingCommand(null); setCommandOpen(true) }
   const restoreDemo = () => {
-    setSession(createVersionedWorkspaceSession(cloneSeedWorkspace())); setPendingCommand(null); setCommandOpen(false); setHistoryOpen(false); setPresentationOpen(false); setSelectedObjectId(null); setTransferMode(null); setPendingAutomation(null)
+    setSession(createVersionedWorkspaceSession(cloneSeedWorkspace())); setPendingCommand(null); setCommandOpen(false); setHistoryOpen(false); setPresentationOpen(false); setPresentationGateOpen(false); setSelectedObjectId(null); setTransferMode(null); setPendingAutomation(null)
   }
   const revertTransaction = (transactionId: string) => setSession((current) => revertVersionedTransaction(current, transactionId).session)
 
@@ -151,7 +157,7 @@ export default function WorkspaceApp() {
       try {
         const restored = importWorkspaceSession(await file.text())
         setSession(restored)
-        setPendingCommand(null); setCommandOpen(false); setHistoryOpen(false); setPresentationOpen(false); setSelectedObjectId(null); setTransferMode(null)
+        setPendingCommand(null); setCommandOpen(false); setHistoryOpen(false); setPresentationOpen(false); setPresentationGateOpen(false); setSelectedObjectId(null); setTransferMode(null)
         setWorkspaceNotice(`Imported ${file.name}`)
       } catch (error) {
         setWorkspaceNotice(error instanceof Error ? error.message : 'Could not import workspace')
@@ -200,6 +206,11 @@ export default function WorkspaceApp() {
     }
   }
 
+  const requestPresentation = () => {
+    if (readiness.readyForReview && reviewGate.ready) { setPresentationOpen(true); return }
+    setPresentationGateOpen(true)
+  }
+
   const runPaletteQuery = (query: string) => {
     const intent = parsePaletteIntent(query, workspace)
     switch (intent.kind) {
@@ -238,7 +249,7 @@ export default function WorkspaceApp() {
             <button className="icon-button" aria-label="Toggle context" onClick={() => setContextOpen((value) => !value)}><Grid3X3 size={16} /></button>
             <button className="secondary-button" onClick={() => setTransferMode('export')}>Export</button>
             <button className="secondary-button" onClick={() => setTransferMode('import')}>Import</button>
-            {surface === 'present' && <button className="primary-button" onClick={() => setPresentationOpen(true)}><Play size={14} /> Present</button>}
+            {surface === 'present' && <button className="primary-button" onClick={requestPresentation}><Play size={14} /> Present</button>}
           </div>
         </header>
 
@@ -256,6 +267,7 @@ export default function WorkspaceApp() {
       {commandOpen && <CommandPalette workspace={workspace} surface={surface} preview={commandPreview} onClose={closeCommandPalette} onStageEvidence={stageEvidence} onStageApproval={stageApproval} onApplyPreview={applyPendingCommand} onCancelPreview={() => setPendingCommand(null)} onSubmitQuery={runPaletteQuery} onOpenObject={openWorkspaceObject} onRestore={restoreDemo} onSwitch={setSurface} />}
       {historyOpen && <HistoryBrowser session={session} onClose={() => setHistoryOpen(false)} onRevert={revertTransaction} />}
       {presentationOpen && <PresentationPlayer workspace={workspace} onClose={() => setPresentationOpen(false)} />}
+      {presentationGateOpen && <PresentationReadinessDialog readiness={readiness} reviewGate={reviewGate} onClose={() => setPresentationGateOpen(false)} onOpenContext={() => { setPresentationGateOpen(false); setContextOpen(true) }} onPresentAnyway={() => { setPresentationGateOpen(false); setPresentationOpen(true) }} />}
       {transferMode && <WorkspaceTransferDialog mode={transferMode} onClose={() => setTransferMode(null)} onExportBackup={exportBackup} onExportStrategy={exportStrategy} onExportBoard={exportBoard} onExportRegions={exportRegions} onExportPlan={exportPlan} onExportAll={exportPortableSet} onImportBackup={importBackup} onImportRegions={() => stageCsvImport('regions')} onImportPlan={() => stageCsvImport('plan')} />}
       {pendingAutomation && <BatchPreviewModal plan={pendingAutomation} title="Import spreadsheet changes" onApply={applyPendingAutomation} onClose={() => setPendingAutomation(null)} />}
     </div>
