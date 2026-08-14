@@ -24,6 +24,7 @@ export function compareWorkspaceStates(before: WorkspaceState, after: WorkspaceS
     if(l.type==='paragraph'&&r.type==='paragraph'){
       add(diffs,after,id,'text',l.text,r.text)
       add(diffs,after,id,'style',l.style??'body',r.style??'body')
+      add(diffs,after,id,'source',l.source??null,r.source??null)
     } else add(diffs,after,id,'content',JSON.stringify(l),JSON.stringify(r))
     add(diffs,after,id,'position',beforeSemantic.blocks.findIndex((x)=>x.id===id),afterSemantic.blocks.findIndex((x)=>x.id===id))
   }
