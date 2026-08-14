@@ -22,7 +22,7 @@ export function buildWorkspaceSearchIndex(workspace: WorkspaceState): WorkspaceS
     record('document:strategy','document',workspace.document.title,`${workspace.document.eyebrow} ${workspace.document.summary}`,['docs']),
   ]
   for (const block of semantic.blocks) {
-    if (block.type === 'paragraph') records.push(record(block.id,'block',block.style?.startsWith('heading-') ? 'Strategy heading' : block.style === 'bullet' || block.style === 'numbered' ? 'Strategy list item' : 'Strategy paragraph',block.text,['docs']))
+    if (block.type === 'paragraph') records.push(record(block.id,'block',block.style?.startsWith('heading-') ? 'Strategy heading' : block.style === 'bullet' || block.style === 'numbered' ? 'Strategy list item' : 'Strategy paragraph',`${block.text} ${block.source ?? ''}`,['docs']))
     if (block.type === 'claim') {
       const claim = semantic.claims.find((item) => item.id === block.claimId)
       if (claim) { const resolved=resolveSemanticClaim(workspace,claim.id);records.push(record(claim.id,'claim',claim.statement,`${claim.rationale} ${claim.confidence} ${resolved.status} ${resolved.sourceLabels.join(' ')}`,['docs'])) }
