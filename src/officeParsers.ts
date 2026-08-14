@@ -14,7 +14,7 @@ function decodeXml(value: string) {
 }
 
 function attribute(fragment: string, name: string) {
-  return fragment.match(new RegExp(`(?:\\w+:)?${name}="([^"]*)"`, 'i'))?.[1]
+  return fragment.match(new RegExp(`(?:^|\\s)(?:[\\w.-]+:)?${name}="([^"]*)"`, 'i'))?.[1]
 }
 
 function tagTexts(fragment: string, localName: string) {
