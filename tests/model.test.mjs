@@ -56,9 +56,14 @@ test('dependency traversal is transitive and de-duplicated', () => {
   assert.equal(downstream.includes('scene:decision'), true)
 })
 
-test('hydration upgrades legacy localStorage state with graph and provenance', () => {
+test('hydration upgrades legacy localStorage state with graph, provenance and metric definitions', () => {
+  const legacyRevenue = cloneSeedWorkspace().metrics.find((metric) => metric.id === 'revenue')
+  delete legacyRevenue.formula
+  legacyRevenue.value = 99
+
   const legacy = {
     title: 'Legacy workspace',
+    metrics: [legacyRevenue],
     regions: [{ id: 'apac', region: 'APAC', revenue: 5, growth: 10, margin: 50 }],
   }
   const hydrated = hydrateWorkspace(legacy)
@@ -68,6 +73,9 @@ test('hydration upgrades legacy localStorage state with graph and provenance', (
   assert.equal(hydrated.graph.edges.length > 0, true)
   assert.deepEqual(hydrated.history, [])
   assert.equal(hydrated.regions[0].revenue, 5)
+  assert.equal(hydrated.metrics.find((metric) => metric.id === 'revenue').value, 99)
+  assert.equal(hydrated.metrics.find((metric) => metric.id === 'revenue').formula, 'SUM(Regions.Revenue)')
+  assert.equal(updateRegionField(hydrated, 'apac', 'revenue', 6).workspace.metrics.find((metric) => metric.id === 'revenue').value, 6)
 })
 
 test('unknown object mutations fail loudly', () => {
