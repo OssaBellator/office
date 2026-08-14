@@ -3,7 +3,7 @@ import test from 'node:test'
 import { cloneSeedWorkspace } from '../src/model.ts'
 import { getSemanticDocument, makeGrowthEvidenceInsertion, resolveSemanticClaim } from '../src/semanticDocument.ts'
 import { previewVersionedCommand } from '../src/semanticPreview.ts'
-import { createVersionedWorkspaceSession, executeVersionedWorkspaceCommand } from '../src/versioning.ts'
+import { createVersionedWorkspaceSession, executeVersionedWorkspaceCommand, hydrateVersionedWorkspaceSession } from '../src/versioning.ts'
 import { revertVersionedTransaction } from '../src/revert.ts'
 
 test('legacy workspaces materialize deterministic semantic document blocks', () => {
@@ -12,6 +12,7 @@ test('legacy workspaces materialize deterministic semantic document blocks', () 
   assert.deepEqual(semantic.blocks.map((block) => block.type), ['paragraph', 'claim', 'metric-embed', 'decision-embed'])
   assert.equal(semantic.blocks[0].text, session.present.document.body)
   assert.equal(semantic.claims[0].predicate.subjectObjectId, 'region:apac')
+  assert.equal(semantic.annotations.length, 2)
   assert.equal(session.present.graph.objects.some((object) => object.id === 'claim:growth-leader'), true)
 })
 
@@ -52,13 +53,33 @@ test('semantic blocks can be reordered as one versioned transaction', () => {
   assert.equal(session.past.at(-1).summary, 'Moved decision-embed block')
 })
 
-test('removing a claim block prunes orphan claim/citation state and graph objects', () => {
+test('comments tasks and approvals are block-attached semantic revisions', () => {
+  let session = createVersionedWorkspaceSession(cloneSeedWorkspace())
+  session = executeVersionedWorkspaceCommand(session, { type: 'annotation.insert', annotation: { id: 'annotation:test', blockId: 'block:opportunity', kind: 'comment', body: 'Clarify the thesis.', owner: 'Ossa', status: 'open' } })
+  assert.equal(getSemanticDocument(session.present).annotations.some((annotation) => annotation.id === 'annotation:test'), true)
+  const preview = previewVersionedCommand(session.present, { type: 'annotation.update', annotationId: 'annotation:test', field: 'status', value: 'resolved' })
+  assert.equal(preview.diffs.some((diff) => diff.objectId === 'annotation:test' && diff.field === 'status' && diff.after === 'resolved'), true)
+  session = executeVersionedWorkspaceCommand(session, { type: 'annotation.update', annotationId: 'annotation:test', field: 'status', value: 'resolved' })
+  assert.equal(getSemanticDocument(session.present).annotations.find((annotation) => annotation.id === 'annotation:test').status, 'resolved')
+})
+
+test('removing a block prunes orphan claim citation and review state plus graph objects', () => {
   let session = createVersionedWorkspaceSession(cloneSeedWorkspace())
   session = executeVersionedWorkspaceCommand(session, { type: 'document.block.remove', blockId: 'block:growth-claim' })
   const semantic = getSemanticDocument(session.present)
   assert.equal(semantic.claims.some((claim) => claim.id === 'claim:growth-leader'), false)
   assert.equal(semantic.citations.some((citation) => citation.id === 'citation:growth-leader-finance'), false)
+  assert.equal(semantic.annotations.some((annotation) => annotation.blockId === 'block:growth-claim'), false)
   assert.equal(session.present.graph.objects.some((object) => object.id === 'claim:growth-leader'), false)
+  assert.equal(session.present.graph.objects.some((object) => object.id === 'annotation:growth-margin-review'), false)
+})
+
+test('older persisted semantic documents hydrate review annotations compatibly', () => {
+  const workspace = createVersionedWorkspaceSession(cloneSeedWorkspace()).present
+  const legacy = structuredClone(workspace)
+  delete legacy.semanticDocument.annotations
+  const hydrated = hydrateVersionedWorkspaceSession({ present: legacy, past: [], future: [], ledger: [], nextRevision: 1 })
+  assert.deepEqual(getSemanticDocument(hydrated.present).annotations, [])
 })
 
 test('semantic document transactions revert as new revisions', () => {
