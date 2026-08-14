@@ -1,4 +1,5 @@
 import type { WorkspaceState } from './model.ts'
+import { getPresentationState } from './presentationState.ts'
 import { getSemanticDocument } from './semanticDocument.ts'
 
 export type WorkspaceVersionDiff = { objectId: string; label: string; field: string; before: string | number | null; after: string | number | null; change: 'changed' | 'added' | 'removed' }
@@ -37,6 +38,13 @@ export function compareWorkspaceStates(before: WorkspaceState, after: WorkspaceS
     const l=beforeSemantic.annotations.find((x)=>x.id===id),r=afterSemantic.annotations.find((x)=>x.id===id)
     if(!l||!r){add(diffs,after,id,'annotation',l?JSON.stringify(l):null,r?JSON.stringify(r):null);continue}
     add(diffs,after,id,'body',l.body,r.body);add(diffs,after,id,'owner',l.owner,r.owner);add(diffs,after,id,'status',l.status,r.status);add(diffs,after,id,'block',l.blockId,r.blockId)
+  }
+
+  const beforePresentation = getPresentationState(before), afterPresentation = getPresentationState(after)
+  add(diffs, after, 'presentation:story', 'order', beforePresentation.order.join(' → '), afterPresentation.order.join(' → '))
+  add(diffs, after, 'presentation:story', 'hiddenScenes', beforePresentation.hiddenSceneIds.join(', '), afterPresentation.hiddenSceneIds.join(', '))
+  for (const id of new Set([...beforePresentation.order,...afterPresentation.order])) {
+    add(diffs, after, `scene:${id}`, 'speakerNote', beforePresentation.notes[id] ?? null, afterPresentation.notes[id] ?? null)
   }
 
   for (const id of new Set([...before.charts.map((x)=>x.id),...after.charts.map((x)=>x.id)])) {
