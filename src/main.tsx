@@ -12,6 +12,7 @@ import './plan-model.css'
 import './semantic-document.css'
 import './relationship-chart.css'
 import './presentation-authoring.css'
+import './workspace-tools.css'
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
