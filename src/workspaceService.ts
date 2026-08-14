@@ -18,7 +18,11 @@ export type WorkspaceCommandResult = {
 }
 
 export class WorkspaceService {
-  constructor(private repository: WorkspaceRepository) {}
+  private repository: WorkspaceRepository
+
+  constructor(repository: WorkspaceRepository) {
+    this.repository = repository
+  }
 
   async create(workspaceId: string, session: VersionedWorkspaceSession) {
     return this.repository.create(workspaceId, session)
