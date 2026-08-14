@@ -17,6 +17,7 @@ export type VersionedWorkspaceCommand =
   | WorkspaceCommand
   | { type: 'document.update'; field: keyof WorkspaceState['document']; value: string; changedAt?: string }
   | { type: 'metric.formula'; metricId: string; formula: string | null; fallbackValue?: number; changedAt?: string }
+  | { type: 'source.status'; sourceId: string; status: 'live' | 'stale'; changedAt?: string }
 
 function directMutation(workspace: WorkspaceState, summary: string, changedAt: string, changedObjectIds: string[], nextWorkspace: WorkspaceState): WorkspaceMutationResult {
   const event: ChangeEvent = { id: `change:${workspace.history.length + 1}`, changedAt, summary, changedObjectIds, affectedObjectIds: getDownstreamObjectIds(nextWorkspace.graph, changedObjectIds) }
@@ -73,6 +74,12 @@ export function runVersionedCommand(workspace: WorkspaceState, command: Versione
       return directMutation(workspace, `Strategy ${String(command.field)} updated`, command.changedAt ?? 'just now', ['document:strategy'], next)
     }
     case 'metric.formula': return updateMetricFormula(workspace, command.metricId, command.formula, command.fallbackValue, command.changedAt)
+    case 'source.status': {
+      const existing = workspace.sources.find((source) => source.id === command.sourceId)
+      if (!existing) throw new Error(`Unknown source: ${command.sourceId}`)
+      const next = { ...workspace, sources: workspace.sources.map((source) => source.id === command.sourceId ? { ...source, status: command.status, updatedAt: command.changedAt ?? 'just now' } : source) }
+      return directMutation(workspace, `${existing.label} marked ${command.status}`, command.changedAt ?? 'just now', [command.sourceId], next)
+    }
   }
 }
 
@@ -83,5 +90,6 @@ export function versionedCommandIsNoop(workspace: WorkspaceState, command: Versi
     case 'document.append': return command.text.trim().length === 0
     case 'document.update': return workspace.document[command.field] === command.value
     case 'metric.formula': return (workspace.metrics.find((candidate) => candidate.id === command.metricId)?.formula ?? null) === command.formula
+    case 'source.status': return workspace.sources.find((source) => source.id === command.sourceId)?.status === command.status
   }
 }
