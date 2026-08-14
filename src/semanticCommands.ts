@@ -10,6 +10,7 @@ import {
   setDecisionStatus,
   updateRegionField,
   type ChangeEvent,
+  type Metric,
   type WorkspaceCommand,
   type WorkspaceMutationResult,
   type WorkspaceState,
@@ -53,6 +54,8 @@ export type VersionedWorkspaceCommand =
   | { type: 'presentation.scene.move'; sceneId: PresentationSceneId; toIndex: number; changedAt?: string }
   | { type: 'presentation.scene.visibility'; sceneId: PresentationSceneId; visible: boolean; changedAt?: string }
   | { type: 'presentation.note.update'; sceneId: PresentationSceneId; note: string; changedAt?: string }
+  | { type: 'metric.create'; metric: Metric; changedAt?: string }
+  | { type: 'metric.remove'; metricId: string; changedAt?: string }
   | { type: 'metric.formula'; metricId: string; formula: string | null; fallbackValue?: number; changedAt?: string }
   | { type: 'source.status'; sourceId: string; status: 'live' | 'stale'; changedAt?: string }
 
@@ -115,6 +118,39 @@ function updateMetricFormula(workspace: WorkspaceState, metricId: string, formul
   const value = formula ? evaluateMetric(next, metricId).value : (fallbackValue ?? updated.value)
   next = { ...next, metrics: next.metrics.map((metric) => metric.id === metricId ? { ...metric, value: Number(value.toFixed(12)) } : metric) }
   return directMutation(workspace, `${existing.label} formula updated`, changedAt, [`metric:${metricId}`], next)
+}
+
+function createMetric(workspace: WorkspaceState, metric: Metric, changedAt = 'just now'): WorkspaceMutationResult {
+  if (!/^[A-Za-z][\w-]*$/.test(metric.id)) throw new Error('Metric id must start with a letter and contain only letters, numbers, underscores, or hyphens')
+  if (!metric.label.trim()) throw new Error('Metric label is required')
+  if (workspace.metrics.some((candidate) => candidate.id === metric.id)) throw new Error(`Metric already exists: ${metric.id}`)
+  const normalized: Metric = { ...structuredClone(metric), value:Number(metric.value || 0), previous:Number(metric.previous || 0), updatedAt:changedAt, source:metric.source?.trim() || `Semantic model · ${metric.label}` }
+  let next: WorkspaceState = {
+    ...workspace,
+    metrics:[...workspace.metrics, normalized],
+    graph:{ ...workspace.graph, objects:[...workspace.graph.objects, { id:`metric:${metric.id}`, kind:'metric', label:metric.label, surfaces:['docs','data','present'] }] },
+  }
+  if (normalized.formula) {
+    validateMetricFormula(next, normalized.id, normalized.formula)
+    next = syncMetricFormulaEdges(next, normalized.id, normalized.formula)
+    const value = evaluateMetric(next, normalized.id).value
+    next = { ...next, metrics:next.metrics.map((candidate) => candidate.id === normalized.id ? { ...candidate, value:Number(value.toFixed(12)) } : candidate) }
+  }
+  return directMutation(workspace, `Created metric ${metric.label}`, changedAt, [`metric:${metric.id}`], next)
+}
+
+function removeMetric(workspace: WorkspaceState, metricId: string, changedAt = 'just now'): WorkspaceMutationResult {
+  const metric = workspace.metrics.find((candidate) => candidate.id === metricId)
+  if (!metric) throw new Error(`Unknown metric: ${metricId}`)
+  const objectId = `metric:${metricId}`
+  const consumers = workspace.graph.edges.filter((edge) => edge.from === objectId).map((edge) => edge.to)
+  if (consumers.length) throw new Error(`${metric.label} is still used by ${[...new Set(consumers)].join(', ')} and cannot be removed`)
+  const next: WorkspaceState = {
+    ...workspace,
+    metrics:workspace.metrics.filter((candidate) => candidate.id !== metricId),
+    graph:{ objects:workspace.graph.objects.filter((object) => object.id !== objectId), edges:workspace.graph.edges.filter((edge) => edge.from !== objectId && edge.to !== objectId) },
+  }
+  return directMutation(workspace, `Removed metric ${metric.label}`, changedAt, [objectId], next)
 }
 
 export function runVersionedCommand(workspace: WorkspaceState, command: VersionedWorkspaceCommand): WorkspaceMutationResult {
@@ -226,9 +262,7 @@ export function runVersionedCommand(workspace: WorkspaceState, command: Versione
       const next = updateEditableChartKind(workspace, command.chartId, command.kind)
       return directMutation(workspace, `${chart.label} changed to ${command.kind === 'line' ? 'line' : 'grouped bars'}`, command.changedAt ?? 'just now', [`chart:${command.chartId}`], next)
     }
-    case 'presentation.replace': {
-      return presentationMutation(workspace, command.value, 'Board narrative structure restored', command.changedAt ?? 'just now', command.value.order)
-    }
+    case 'presentation.replace': return presentationMutation(workspace, command.value, 'Board narrative structure restored', command.changedAt ?? 'just now', command.value.order)
     case 'presentation.scene.move': {
       const state = getPresentationState(workspace)
       const fromIndex = state.order.indexOf(command.sceneId)
@@ -259,6 +293,8 @@ export function runVersionedCommand(workspace: WorkspaceState, command: Versione
       else delete state.notes[command.sceneId]
       return presentationMutation(workspace, state, `Updated ${command.sceneId} speaker note`, command.changedAt ?? 'just now', [command.sceneId])
     }
+    case 'metric.create': return createMetric(workspace, command.metric, command.changedAt)
+    case 'metric.remove': return removeMetric(workspace, command.metricId, command.changedAt)
     case 'metric.formula': return updateMetricFormula(workspace, command.metricId, command.formula, command.fallbackValue, command.changedAt)
     case 'source.status': {
       const existing = workspace.sources.find((source) => source.id === command.sourceId)
@@ -294,6 +330,8 @@ export function versionedCommandIsNoop(workspace: WorkspaceState, command: Versi
     case 'presentation.scene.move': return getPresentationState(workspace).order.indexOf(command.sceneId) === command.toIndex
     case 'presentation.scene.visibility': return getPresentationState(workspace).hiddenSceneIds.includes(command.sceneId) === !command.visible
     case 'presentation.note.update': return (getPresentationState(workspace).notes[command.sceneId] ?? '') === command.note
+    case 'metric.create': return false
+    case 'metric.remove': return false
     case 'metric.formula': return (workspace.metrics.find((candidate) => candidate.id === command.metricId)?.formula ?? null) === command.formula
     case 'source.status': return workspace.sources.find((source) => source.id === command.sourceId)?.status === command.status
   }
