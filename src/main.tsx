@@ -14,6 +14,7 @@ import './relationship-chart.css'
 import './presentation-authoring.css'
 import './formula-catalog.css'
 import './workspace-tools.css'
+import './governance-ui.css'
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
