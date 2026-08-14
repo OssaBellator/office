@@ -1,22 +1,11 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Check, CheckCircle2, ChevronLeft, ChevronRight, Circle, Link2, Plus, Sparkles } from 'lucide-react'
 import { formatMetric, type WorkspaceState } from '../model'
-
-type Scene = { id: string; eyebrow: string; title: string; note: string; source: string }
+import { buildPresentationScenes } from '../presentationModel'
 
 export function PresentSurface({ workspace }: { workspace: WorkspaceState }) {
   const [selected, setSelected] = useState(1)
-  const revenue = workspace.metrics.find((metric) => metric.id === 'revenue')!
-  const growth = workspace.metrics.find((metric) => metric.id === 'growth')!
-  const fastest = workspace.regions.reduce((best, row) => row.growth > best.growth ? row : best)
-  const decision = workspace.decisions[0]
-
-  const scenes = useMemo<Scene[]>(() => [
-    { id: 'thesis', eyebrow: '01 · Thesis', title: workspace.document.title, note: 'Open with the operating-model thesis: the interfaces stay specialised, while the work underneath becomes one connected system.', source: 'Strategy document · live' },
-    { id: 'performance', eyebrow: '02 · Performance', title: `${formatMetric(revenue)} revenue`, note: 'Lead with momentum, then use the next scene to explain which region changes the allocation decision.', source: 'Finance model · Revenue · Q2 FY27 · live' },
-    { id: 'signal', eyebrow: '03 · Signal', title: `${fastest.region} is growing ${fastest.growth}%`, note: `Make the tradeoff explicit: ${fastest.region} has the strongest growth signal, but its margin should constrain how aggressively we scale.`, source: `Finance model · Regions · ${fastest.region} · live` },
-    { id: 'decision', eyebrow: '04 · Decision', title: decision.title, note: decision.status === 'approved' ? 'Close by restating the approved direction and the operating constraint.' : 'Close with a crisp approval request and the evidence that still needs validation.', source: 'Shared decision object · live' },
-  ], [workspace.document.title, revenue.value, growth.value, fastest.region, fastest.growth, decision.title, decision.status])
+  const scenes = useMemo(() => buildPresentationScenes(workspace), [workspace])
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
