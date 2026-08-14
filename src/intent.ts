@@ -52,6 +52,9 @@ export function parsePaletteIntent(input: string, workspace: WorkspaceState): Pa
   const appendMatch = query.match(/^(?:append|add)\s+(?:to\s+)?(?:the\s+)?strategy\s*:\s*(.+)$/i)
   if (appendMatch) return { kind: 'command', label: 'Append text to strategy', command: { type: 'document.append', text: appendMatch[1].trim() } }
 
+  const sourceMatch = query.match(/^(?:mark|set)\s+(?:the\s+)?(?:finance(?: model)?|finance source)\s+(?:source\s+)?(?:as\s+)?(live|stale)$/i)
+  if (sourceMatch) return { kind: 'command', label: `Mark Finance model ${sourceMatch[1].toLowerCase()}`, command: { type: 'source.status', sourceId: 'source:finance', status: sourceMatch[1].toLowerCase() as 'live' | 'stale' } }
+
   const formulaMatch = query.match(/^(?:set|change|update)\s+(?:the\s+)?revenue\s+formula\s+(?:to\s+)?(.+)$/i)
   if (formulaMatch) {
     const formula = formulaMatch[1].trim()
@@ -68,5 +71,5 @@ export function parsePaletteIntent(input: string, workspace: WorkspaceState): Pa
     return { kind: 'command', label: `Update ${region.region} ${field}`, command: { type: 'region.update', regionId: region.id, field, value: Number(regionMatch[3]) } }
   }
 
-  return { kind: 'unknown', message: 'I can edit regional metrics, formulas, strategy text, decisions, navigate views, and open history.' }
+  return { kind: 'unknown', message: 'I can edit regional metrics, formulas, source freshness, strategy text, decisions, navigate views, and open history.' }
 }
