@@ -1,0 +1,28 @@
+.metric-grid { grid-template-columns: repeat(auto-fit, minmax(125px, 1fr)); }
+.sheet-stack { padding-top:14px; }
+.sheet-switcher { display:flex; gap:6px; margin-bottom:8px; }
+.sheet-switcher button { min-width:135px; height:34px; padding:0 9px; border:1px solid var(--line); border-radius:7px; background:#f6f6f2; display:grid; grid-template-columns:10px minmax(0,1fr) auto; align-items:center; gap:5px; color:#737870; text-align:left; font-size:9px; }
+.sheet-switcher button.active { background:white; border-color:#9caf9f; color:#3f5147; box-shadow:0 1px 3px rgba(0,0,0,.04); }
+.sheet-switcher small { color:#90958d; font-size:8px; }
+.plan-dot { width:6px; height:6px; border-radius:50%; background:#8c78aa; }
+.plan-table { width:min(620px,100%); }
+.schema-definition + .schema-definition { margin-top:15px; padding-top:10px; border-top:1px solid var(--line); }
+.metric-editor-stack { display:block; }
+.metric-formula-editor { padding:10px 0; border-bottom:1px solid var(--line); }
+.metric-formula-editor:last-child { border-bottom:0; }
+.metric-formula-heading { display:flex; align-items:center; justify-content:space-between; gap:12px; }
+.metric-formula-heading strong { font-size:10px; }
+.metric-formula-heading span { font-size:16px; font-weight:650; }
+.comparison-list { margin-top:18px; display:grid; gap:11px; }
+.comparison-row { display:grid; grid-template-columns:85px minmax(0,1fr) 42px; align-items:center; gap:8px; font-size:8.5px; }
+.comparison-row > div { display:grid; gap:3px; }
+.comparison-bar { height:5px; border-radius:99px; }
+.comparison-bar.actual { background:#5b806f; }
+.comparison-bar.plan { background:#b8aacb; }
+.comparison-row strong { text-align:right; font-size:8px; }
+.comparison-legend { margin-top:14px; display:flex; gap:12px; color:#878c84; font-size:7.5px; }
+.comparison-legend span { display:flex; align-items:center; gap:4px; }
+.comparison-legend i { width:9px; height:4px; border-radius:9px; }
+.comparison-legend i.actual { background:#5b806f; }
+.comparison-legend i.plan { background:#b8aacb; }
+.card-heading strong small { display:inline; margin-left:6px; font-size:8px; font-weight:650; }
