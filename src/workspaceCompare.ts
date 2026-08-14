@@ -1,5 +1,5 @@
 import type { WorkspaceState } from './model.ts'
-import { getImportedTables } from './importedTables.ts'
+import { getImportedTables, importedTableCellKey } from './importedTables.ts'
 import { getPresentationState } from './presentationState.ts'
 import { getSemanticDocument } from './semanticDocument.ts'
 
@@ -73,6 +73,8 @@ export function compareWorkspaceStates(before: WorkspaceState, after: WorkspaceS
       for(const columnId of new Set([...Object.keys(lr.values),...Object.keys(rr.values)])){
         const label=afterColumns.get(columnId)?.label??beforeColumns.get(columnId)?.label??columnId
         add(diffs,after,`table:${id}:${rowId}`,label,lr.values[columnId]??null,rr.values[columnId]??null)
+        const cellKey=importedTableCellKey(rowId,columnId)
+        add(diffs,after,`table:${id}:${rowId}`,`${label} formula`,l.formulaByCell?.[cellKey]??null,r.formulaByCell?.[cellKey]??null)
       }
     }
   }
