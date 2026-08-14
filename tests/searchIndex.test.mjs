@@ -23,6 +23,13 @@ test('workspace search can find formulas and source/provenance text', () => {
   assert.equal(searchWorkspace(workspace, 'Finance model live', { kinds:['source'] })[0].id, 'source:finance')
 })
 
+test('workspace search finds imported document blocks by source filename', () => {
+  let session=createVersionedWorkspaceSession(cloneSeedWorkspace())
+  session=executeVersionedWorkspaceCommand(session,{type:'document.block.insert',block:{id:'block:imported-source',type:'paragraph',text:'Imported recommendation',style:'heading-2',source:'board-strategy.docx'}})
+  const result=searchWorkspace(session.present,'board strategy docx',{kinds:['block']})[0]
+  assert.equal(result.id,'block:imported-source')
+})
+
 test('workspace search respects surface and kind filters', () => {
   const workspace = createVersionedWorkspaceSession(cloneSeedWorkspace()).present
   const presentResults = searchWorkspace(workspace, 'revenue', { surface:'present' })
