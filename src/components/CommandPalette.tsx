@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react'
 import { CheckCircle2, ChevronRight, Command, LayoutTemplate, RefreshCw, Sparkles, Table2 } from 'lucide-react'
 import type { Surface, WorkspaceState } from '../model'
 import type { VersionedCommandPreview } from '../semanticPreview'
@@ -46,7 +46,7 @@ export function CommandPalette({
     }
     setError(onSubmitQuery(query))
   }
-  const handleKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
+  const handleKeyDown = (event: ReactKeyboardEvent<HTMLInputElement>) => {
     if (event.key === 'ArrowDown' && search?.results.length) {
       event.preventDefault(); setSelectedSearchIndex((index) => Math.min(search.results.length - 1, index + 1)); return
     }
