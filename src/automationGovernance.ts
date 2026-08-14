@@ -10,7 +10,7 @@ export type AutomationGovernanceDecision = {
 
 function commandRisk(type: string) {
   if (type === 'source.status' || type === 'metric.formula' || type === 'metric.remove' || type === 'document.block.remove' || type === 'document.semantic.replace') return 'high' as const
-  if (type === 'metric.create' || type === 'decision.status' || type === 'presentation.scene.visibility' || type === 'chart.kind' || type === 'claim.update' || type === 'citation.update') return 'medium' as const
+  if (type === 'data.imported.replace' || type === 'metric.create' || type === 'decision.status' || type === 'presentation.scene.visibility' || type === 'chart.kind' || type === 'claim.update' || type === 'citation.update') return 'medium' as const
   return 'low' as const
 }
 
