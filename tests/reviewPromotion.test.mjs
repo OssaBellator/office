@@ -28,6 +28,7 @@ test('promoting a source note creates a native Frame task without mutating sourc
   assert.equal(promotion.review.kind,'task')
   assert.equal(promotion.review.status,'open')
   assert.equal(promotion.review.owner,'Unassigned')
+  assert.equal(promotion.review.body,'Validate renewal assumption')
   assert.equal(promotion.review.sourceReview.kind,'excel-note')
   assert.equal(promotion.review.sourceReview.sourceReviewId,'excel-note:pipeline.xlsx:Pipeline:B2')
   const decoded=deserializeWorkspaceCommand(serializeWorkspaceCommand(promotion.command))
@@ -42,6 +43,20 @@ test('promoting a source note creates a native Frame task without mutating sourc
   assert.equal(inbox.find((item)=>item.origin==='imported-excel').promotedReviewId,promotion.review.id)
   assert.equal(inbox.some((item)=>item.origin==='frame-data'&&item.id===promotion.review.id),true)
   assert.equal(inbox.some((item)=>item.origin==='imported-excel'&&item.body==='Validate renewal assumption'),true)
+})
+
+test('promotion can author native kind owner and follow-up without changing the source review',()=>{
+  const workspace=withImportedTables(cloneSeedWorkspace(),[sourceTable()])
+  const source=listWorkspaceReviewInbox(workspace).find((item)=>item.origin==='imported-excel-thread')
+  const promotion=planPromoteSourceReview(workspace,source.id,{kind:'approval',owner:'Finance lead',body:'Approve renewal evidence before forecast lock',createdAt:'now'})
+  assert.equal(promotion.review.kind,'approval')
+  assert.equal(promotion.review.status,'pending')
+  assert.equal(promotion.review.owner,'Finance lead')
+  assert.equal(promotion.review.body,'Approve renewal evidence before forecast lock')
+  const applied=executeVersionedWorkspaceCommand(createVersionedWorkspaceSession(workspace),promotion.command).present
+  assert.equal(listWorkspaceReviewInbox(applied).find((item)=>item.origin==='imported-excel-thread').body,'Review renewal')
+  assert.equal(getWorkspaceReviews(applied)[0].body,'Approve renewal evidence before forecast lock')
+  assert.throws(()=>planPromoteSourceReview(workspace,source.id,{body:'   '}),/must not be blank/)
 })
 
 test('promoted review resolves independently while source review remains immutable and marked promoted',()=>{
