@@ -1,6 +1,7 @@
 import type { WorkspaceState } from './model.ts'
 import { planOfficeImport, type OfficeImportPlan } from './officeImportPlanner.ts'
 import { synchronizeOfficeImportPlan } from './officeImportSync.ts'
+import { preserveXlsxNumberFormatMetadata } from './xlsxNumberFormatImport.ts'
 import { preserveXlsxSharedFormulaMetadata } from './xlsxSharedFormulaImport.ts'
 import { preserveXlsxSheetVisibility } from './xlsxSheetVisibilityImport.ts'
 
@@ -16,6 +17,7 @@ export async function planOfficeInteropImport(
 ):Promise<OfficeImportPlan>{
   const parsed=await planOfficeImport(workspace,input,fileName)
   const withVisibility=await preserveXlsxSheetVisibility(workspace,input,fileName,parsed)
-  const enriched=await preserveXlsxSharedFormulaMetadata(input,fileName,withVisibility)
+  const withFormats=await preserveXlsxNumberFormatMetadata(workspace,input,fileName,withVisibility)
+  const enriched=await preserveXlsxSharedFormulaMetadata(input,fileName,withFormats)
   return synchronizeOfficeImportPlan(workspace,enriched,fileName)
 }
