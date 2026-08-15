@@ -10,7 +10,7 @@ The lossless representation remains the Frame workspace/session JSON because it 
 | --- | --- | --- | --- |
 | Microsoft Word `.docx` | Yes | Yes | Paragraphs/headings/lists become semantic document blocks; tables become Frame Data. Source provenance is retained. |
 | Microsoft PowerPoint `.pptx` | Yes | Yes | Relationship slide order, slide text and speaker notes become semantic scenes. Export uses real PowerPoint notes parts. |
-| Microsoft Excel `.xlsx` | Yes | Yes | Compatible finance sheets update live models; arbitrary/foreign sheets remain Data. Booleans, formulas, hidden-sheet state, number formats/date systems, hyperlinks and classic cell-note provenance are preserved. |
+| Microsoft Excel `.xlsx` | Yes | Yes | Compatible finance sheets update live models; arbitrary/foreign sheets remain Data. Booleans, formulas, hidden-sheet state, number formats/date systems, hyperlinks, classic notes and modern threaded review provenance are preserved. |
 | Google Docs | Yes, direct Drive or DOCX download | DOCX projection | Direct Drive export goes through the same secure Office pipeline as local files. |
 | Google Slides | Yes, direct Drive or PPTX download | PPTX projection | Native Google Slides are exported in memory to PPTX then semanticized. |
 | Google Sheets | Yes, direct Drive or XLSX download | XLSX projection | Native Sheets are exported in memory to XLSX; spreadsheet provenance uses the same Excel path. |
@@ -108,8 +108,9 @@ Imported Data tables currently preserve:
 - foreign columns/schemas;
 - formula text beside cached formula values;
 - per-cell number-format ID and custom format code where present;
-- per-cell hyperlinks as source provenance; and
-- classic Excel cell notes with author and plain text.
+- per-cell hyperlinks as source provenance;
+- classic Excel cell notes with author and plain text; and
+- modern threaded review conversations with identities, replies, timestamps, resolution state and mentions.
 
 They remain editable, codec/runtime validated, searchable, version-diffed, fingerprinted, revertible, and included in XLSX compatibility projection where safe.
 
@@ -136,14 +137,7 @@ Workbook sheet visibility is source provenance, not UI trivia. Frame retains hid
 
 ### Number-format and date-system provenance
 
-Frame preserves per-cell:
-
-- Excel `numFmtId`; and
-- custom `formatCode` when present.
-
-It also preserves whether the source workbook uses the 1900 or 1904 date system.
-
-Frame intentionally leaves the stored numeric cell value unchanged during import rather than guessing a JavaScript/semantic date. This avoids silently changing serial semantics.
+Frame preserves per-cell Excel `numFmtId`, custom `formatCode` when present, and whether the source workbook uses the 1900 or 1904 date system. It deliberately leaves stored numeric values unchanged during import rather than guessing semantic dates.
 
 Number-format provenance is shown with a `#` marker in Data and participates in search, semantic history and interoperability reporting.
 
@@ -169,37 +163,43 @@ The Data surface distinguishes safe live links from inert link provenance. Searc
 
 ### Classic Excel cell notes as review provenance
 
-Classic worksheet notes/comments are imported as per-cell review provenance with:
-
-- plain-text note body; and
-- author when present.
+Classic worksheet notes/comments are imported as per-cell review provenance with plain-text note body and author when present.
 
 A note badge is shown beside the imported cell. Notes are searchable, command-codec validated, included in semantic workspace identity, and compared separately from the underlying cell value in semantic history. Editing the cached cell value does not silently erase its imported note.
 
 **Default XLSX export deliberately omits classic notes for now.** The Office export assessment shows the number of Frame review notes that will stay behind. An opt-in experimental classic-note XLSX writer and validator exist for local interoperability testing, but it is not the normal product export path until current Excel clients have been externally smoke-tested for repair-free behavior.
 
-Modern **threaded Excel comments** are still warning-only. Frame does not flatten a discussion thread into a fake legacy note because that would lose participants/replies and misrepresent the source review semantics.
+### Modern Excel threaded review conversations
+
+Frame imports modern Excel threaded comments as structured source review rather than flattening them into legacy notes.
+
+For each retained thread Frame preserves:
+
+- comment ID and person ID;
+- resolved display name when Persons metadata is available;
+- root/reply structure through `parentId`;
+- source text;
+- source UTC timestamp from `dT`;
+- source open/resolved state from `done`; and
+- mention IDs, people and source character ranges.
+
+Replies without their own cell reference inherit the root cell by following their parent chain. Threads that cannot be mapped onto retained Data rows/columns are explicitly reported rather than silently relocated.
+
+Threaded review is visible as a distinct Data-cell badge and source-order tooltip, searchable, command-codec validated, included in review-aware semantic history, and shown in the unified Context review inbox with source status, participant and reply counts. Imported review remains read-only provenance and does **not** block readiness until a user explicitly promotes it into native Frame review work.
+
+**Default XLSX export deliberately omits modern threaded review parts.** Export preflight shows retained thread/comment/open-thread counts and states that Frame is keeping the discussion rather than flattening it into legacy notes.
 
 ### Still not translated
 
 - fonts, fills, borders and alignment;
 - conditional formatting;
 - merged-cell geometry;
-- threaded Excel comments/replies;
+- modern threaded-review XLSX export;
 - external workbook/data connections.
 
 ## Google Drive direct-import boundary
 
-`googleIdentity.ts` and `googleDriveProvider.ts` implement a read-only browser integration.
-
-The Google flow can:
-
-- request access only when the user chooses to connect;
-- discover native Google Docs/Sheets/Slides;
-- search/paginate Drive results;
-- map Google MIME types to Frame import kinds;
-- export the selected file to DOCX/XLSX/PPTX bytes in memory; and
-- route those bytes through `planSecureOfficeImport()`.
+`googleIdentity.ts` and `googleDriveProvider.ts` implement a read-only browser integration. The Google flow can request access on demand, discover/search/paginate native Docs/Sheets/Slides, export a selected file to Office bytes in memory, and route those bytes through `planSecureOfficeImport()`.
 
 Security model:
 
@@ -207,7 +207,7 @@ Security model:
 - no client secret in browser code;
 - read-only Drive scope;
 - ephemeral token held in UI memory;
-- same macro/control rejection and bounded ZIP parser as local Office import;
+- same macro/control rejection and bounded Office parser as local files;
 - no mutation before governed semantic preview.
 
 ## Import safety limits
@@ -231,19 +231,13 @@ Normal Office compatibility exports do **not** embed hidden Frame-only semantic 
 
 An internal manifest mechanism exists for controlled round-trip workflows and has an explicit strip operation, but ordinary shareable DOCX/PPTX/XLSX files remain clean compatibility projections.
 
-Foreign Excel formulas are likewise never implicitly reactivated on export, and unsupported hyperlink schemes are never silently made live.
+Foreign Excel formulas are never implicitly reactivated, unsupported hyperlink schemes are never silently made live, and imported review conversations are never silently flattened into another review format.
 
 ## Package validation
 
-Frame has a local OPC validator that checks:
+Frame has a local OPC validator that checks internal relationship targets, unique relationship IDs and content-type coverage. The exporter regression suite covers DOCX, PPTX, XLSX, speaker-note parts, styled XLSX packages, hyperlink relationships and the experimental classic-note package path.
 
-- internal relationship targets exist;
-- relationship IDs are unique; and
-- all package parts have content-type coverage.
-
-The exporter regression suite covers DOCX, PPTX, XLSX, speaker-note parts, styled XLSX packages, hyperlink relationships and the experimental classic-note package path.
-
-This is stronger than self-parsing alone, but it is not a substitute for opening generated files in real current Office applications.
+This is stronger than self-parsing alone, but it is not a substitute for opening generated files in current Office applications.
 
 ## Local interoperability QA
 
@@ -272,10 +266,11 @@ Frame should never make users choose between semantic power and ecosystem compat
 
 ## Next interoperability milestones
 
-1. Model modern threaded Excel comments/replies as real Frame review threads rather than flattening them into legacy notes.
-2. Preserve selected spreadsheet presentation metadata (alignment/emphasis) only where it adds semantic meaning; do not recreate a formatting-first spreadsheet model.
-3. Represent Word comments/revisions as Frame review annotations and version events.
-4. Import embedded DOCX/PPTX images into reusable Frame media objects.
-5. Convert PowerPoint charts/tables into linked semantic chart/table objects.
-6. Expand the explicit reviewable translation layer for supported foreign Excel formulas into Frame formulas.
-7. Expand fixture coverage using current Microsoft 365 and Google Workspace exports and run manual application smoke tests in addition to `test:interop`.
+1. Promote selected imported source notes/threads into native Frame review work while preserving an immutable link back to source review provenance.
+2. Validate and, if justified, implement modern threaded-review XLSX export without flattening conversations.
+3. Preserve selected spreadsheet presentation metadata (alignment/emphasis) only where it adds semantic meaning; do not recreate a formatting-first spreadsheet model.
+4. Represent Word comments/revisions as Frame review annotations and version events.
+5. Import embedded DOCX/PPTX images into reusable Frame media objects.
+6. Convert PowerPoint charts/tables into linked semantic chart/table objects.
+7. Expand the explicit reviewable translation layer for supported foreign Excel formulas into Frame formulas.
+8. Expand fixture coverage using current Microsoft 365 and Google Workspace exports and run manual application smoke tests in addition to `test:interop`.
