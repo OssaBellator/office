@@ -1,5 +1,6 @@
-import { getImportedTables } from './importedTables.ts'
+import { getImportedTables, withImportedTables } from './importedTables.ts'
 import type { WorkspaceState } from './model.ts'
+import { parseWorkspaceReviewRecord } from './workspaceReviewCodec.ts'
 
 export type WorkspaceReviewKind='comment'|'task'|'approval'
 export type WorkspaceReviewStatus='open'|'resolved'|'pending'|'approved'
@@ -23,8 +24,39 @@ export type WorkspaceReviewRecord={
   sourceReview?:WorkspaceReviewSource
 }
 
+type ExtendedWorkspaceState=WorkspaceState&{workspaceReviews?:unknown}
+
+function parsedReviews(value:unknown,field:string):WorkspaceReviewRecord[]{
+  if(value===undefined)return[]
+  if(!Array.isArray(value))throw new Error(`${field} must be an array`)
+  const reviews=value.map(parseWorkspaceReviewRecord),ids=new Set<string>()
+  for(const review of reviews){if(ids.has(review.id))throw new Error(`${field} contains duplicate review id ${review.id}`);ids.add(review.id)}
+  return reviews
+}
+function legacyTableReviews(workspace:WorkspaceState){
+  return getImportedTables(workspace).flatMap((table)=>table.promotedReviews??[]).map(parseWorkspaceReviewRecord)
+}
+function mergeReviews(primary:WorkspaceReviewRecord[],legacy:WorkspaceReviewRecord[]){
+  const byId=new Map(primary.map((review)=>[review.id,review] as const))
+  for(const review of legacy)if(!byId.has(review.id))byId.set(review.id,review)
+  return[...byId.values()]
+}
+
 export function getWorkspaceReviews(workspace:WorkspaceState):WorkspaceReviewRecord[]{
-  return getImportedTables(workspace).flatMap((table)=>structuredClone(table.promotedReviews??[]))
+  const direct=parsedReviews((workspace as ExtendedWorkspaceState).workspaceReviews,'workspace.workspaceReviews')
+  return structuredClone(mergeReviews(direct,legacyTableReviews(workspace)))
+}
+
+export function withWorkspaceReviews(workspace:WorkspaceState,reviews:WorkspaceReviewRecord[]):WorkspaceState{
+  const parsed=parsedReviews(reviews,'workspace.workspaceReviews')
+  const tables=getImportedTables(workspace).map(({promotedReviews:_legacy,...table})=>table)
+  const withTables=withImportedTables(workspace,tables)
+  return{...withTables,workspaceReviews:structuredClone(parsed)} as WorkspaceState
+}
+
+/** Lift legacy table-owned promotedReviews into the canonical workspace collection. */
+export function materializeWorkspaceReviews(workspace:WorkspaceState):WorkspaceState{
+  return withWorkspaceReviews(workspace,getWorkspaceReviews(workspace))
 }
 
 export function workspaceReviewIsOpen(review:WorkspaceReviewRecord){
