@@ -31,12 +31,14 @@ test('semantic history uses the review-aware workspace comparator',async()=>{
   assert.match(revert,/compareWorkspaceStatesWithReview/)
 })
 
-test('imported Data cells render classic-note and threaded-review provenance',async()=>{
+test('imported Data cells render classic-note threaded-review and native promoted provenance',async()=>{
   const text=await source('src/components/ImportedTablesPanel.tsx')
   assert.match(text,/getImportedTableComment/)
   assert.match(text,/getImportedTableThread/)
   assert.match(text,/imported-note-badge/)
   assert.match(text,/imported-thread-badge/)
+  assert.match(text,/imported-frame-review-badge/)
+  assert.match(text,/workspaceReviewIsOpen/)
   assert.match(text,/MessageSquareText/)
 })
 
@@ -81,7 +83,27 @@ test('unified Context review inbox opens a configurable promotion editor for sou
   assert.match(editor,/Promoted review owner/)
   assert.match(editor,/Promoted review body/)
   assert.match(promotion,/body\?:string/)
+  assert.match(promotion,/explicit owner/)
   assert.match(promotion,/sourceReviewId/)
   assert.match(sync,/findSourceReviewCell/)
   assert.match(sync,/sameContent/)
+})
+
+test('archived native review can be explicitly relinked to ranked refreshed source review',async()=>{
+  const inbox=await source('src/workspaceReviewInbox.ts')
+  const context=await source('src/components/ContextPanel.tsx')
+  const editor=await source('src/components/ReviewRelinkDialog.tsx')
+  const planner=await source('src/reviewRelink.ts')
+  assert.match(inbox,/archived:boolean/)
+  assert.match(inbox,/archivedNativeOpen/)
+  assert.match(context,/ReviewRelinkDialog/)
+  assert.match(context,/setRelinkReviewId\(item\.id\)/)
+  assert.match(context,/>Relink</)
+  assert.match(editor,/listReviewRelinkCandidates/)
+  assert.match(editor,/planRelinkPromotedReview/)
+  assert.match(editor,/matchHints/)
+  assert.match(planner,/occupiedSourceKeys/)
+  assert.match(planner,/same source text/)
+  assert.match(planner,/same source identity/)
+  assert.match(planner,/review archive/)
 })
