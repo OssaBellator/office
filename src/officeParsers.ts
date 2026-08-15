@@ -4,7 +4,9 @@ export type ImportedDocumentBlock = {
 }
 
 export type ImportedSlide = { title: string; body: string[]; note: string; flattenedTables: number }
-export type ImportedSheet = { name: string; rows: Array<Array<string | number | null>>; formulas?: Array<Array<string | null>> }
+export type ImportedSheetVisibility = 'visible' | 'hidden' | 'veryHidden'
+export type ImportedSheetCell = string | number | boolean | null
+export type ImportedSheet = { name: string; rows: Array<Array<ImportedSheetCell>>; formulas?: Array<Array<string | null>>; visibility?: ImportedSheetVisibility }
 
 function decodeXml(value: string) {
   return value
@@ -110,9 +112,9 @@ function docxStyleKind(style: string): ImportedDocumentBlock['kind'] | null {
 export function parseDocxTables(documentXml: string): ImportedSheet[] {
   const tables: ImportedSheet[] = []
   for (const [tableIndex, tableMatch] of [...documentXml.matchAll(/<w:tbl\b[^>]*>([\s\S]*?)<\/w:tbl>/gi)].entries()) {
-    const rows: Array<Array<string | number | null>> = []
+    const rows: Array<Array<ImportedSheetCell>> = []
     for (const rowMatch of tableMatch[1].matchAll(/<w:tr\b[^>]*>([\s\S]*?)<\/w:tr>/gi)) {
-      const row: Array<string | number | null> = []
+      const row: Array<ImportedSheetCell> = []
       for (const cellMatch of rowMatch[1].matchAll(/<w:tc\b[^>]*>([\s\S]*?)<\/w:tc>/gi)) {
         const paragraphTexts = [...cellMatch[1].matchAll(/<w:p\b[^>]*>([\s\S]*?)<\/w:p>/gi)].map((match) => wordParagraphText(match[1])).filter(Boolean)
         row.push(paragraphTexts.length ? paragraphTexts.join('\n') : wordParagraphText(cellMatch[1]))
@@ -206,18 +208,27 @@ function columnIndex(reference: string) {
   return result - 1
 }
 
+function parseBooleanCell(raw:string|undefined){
+  if(raw===undefined)return null
+  const normalized=raw.trim().toLowerCase()
+  if(normalized==='1'||normalized==='true')return true
+  if(normalized==='0'||normalized==='false')return false
+  return null
+}
+
 export function parseXlsxSheetXmlDetailed(sheetXml:string,sharedStrings:string[]=[]){
-  const rows:Array<Array<string|number|null>>=[],formulas:Array<Array<string|null>>=[]
+  const rows:Array<Array<ImportedSheetCell>>=[],formulas:Array<Array<string|null>>=[]
   for(const rowMatch of sheetXml.matchAll(/<row\b[^>]*>([\s\S]*?)<\/row>/gi)){
-    const row:Array<string|number|null>=[],formulaRow:Array<string|null>=[]
+    const row:Array<ImportedSheetCell>=[],formulaRow:Array<string|null>=[]
     for(const cellMatch of rowMatch[1].matchAll(/<c\b([^>]*)>([\s\S]*?)<\/c>/gi)){
       const attrs=cellMatch[1],body=cellMatch[2]
       const reference=attribute(attrs,'r')??`A${rows.length+1}`,index=columnIndex(reference),type=attribute(attrs,'t')??''
       const raw=body.match(/<v\b[^>]*>([\s\S]*?)<\/v>/i)?.[1]
       const formulaMatch=body.match(/<f\b[^>]*>([\s\S]*?)<\/f>/i)
-      let value:string|number|null=null
+      let value:ImportedSheetCell=null
       if(type==='s'&&raw!==undefined)value=sharedStrings[Number(raw)]??''
       else if(type==='inlineStr')value=tagTexts(body,'t').join('')
+      else if(type==='b')value=parseBooleanCell(raw)
       else if((type==='str'||type==='e')&&raw!==undefined)value=decodeXml(raw)
       else if(raw!==undefined&&raw!=='')value=Number.isFinite(Number(raw))?Number(raw):decodeXml(raw)
       while(row.length<=index)row.push(null)
@@ -230,7 +241,7 @@ export function parseXlsxSheetXmlDetailed(sheetXml:string,sharedStrings:string[]
   return{rows,formulas}
 }
 
-export function parseXlsxSheetXml(sheetXml: string, sharedStrings: string[] = []): Array<Array<string | number | null>> {
+export function parseXlsxSheetXml(sheetXml: string, sharedStrings: string[] = []): Array<Array<ImportedSheetCell>> {
   return parseXlsxSheetXmlDetailed(sheetXml,sharedStrings).rows
 }
 
@@ -241,18 +252,24 @@ export function parseXlsxSharedStrings(xml: string | null) {
   return strings
 }
 
+function sheetVisibility(fragment:string):ImportedSheetVisibility{
+  const state=(attribute(fragment,'state')??'visible').toLowerCase()
+  return state==='veryhidden'?'veryHidden':state==='hidden'?'hidden':'visible'
+}
+
 export function parseXlsxWorkbook(workbookXml: string, relationshipsXml: string, sheetXmlByPath: Map<string, string>, sharedStrings: string[] = []): ImportedSheet[] {
   const relTargets = parsePackageRelationships(relationshipsXml)
   const sheets: ImportedSheet[] = []
   for (const match of workbookXml.matchAll(/<sheet\b([^>]*)\/?\s*>/gi)) {
     const name = decodeXml(attribute(match[1], 'name') ?? 'Sheet')
+    const visibility=sheetVisibility(match[1])
     const relId = relationshipId(match[1])
     if (!relId) continue
     const target = relTargets.get(relId)?.target
     if (!target) continue
     const normalized = resolvePackagePath('xl/workbook.xml', target)
     const xml = sheetXmlByPath.get(normalized)
-    if (xml) { const parsed=parseXlsxSheetXmlDetailed(xml,sharedStrings);sheets.push({ name, rows:parsed.rows, formulas:parsed.formulas }) }
+    if (xml) { const parsed=parseXlsxSheetXmlDetailed(xml,sharedStrings);sheets.push({ name, rows:parsed.rows, formulas:parsed.formulas, visibility }) }
   }
   return sheets
 }
