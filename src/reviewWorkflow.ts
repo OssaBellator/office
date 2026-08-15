@@ -1,5 +1,6 @@
 import type { WorkspaceState } from './model.ts'
 import { getSemanticDocument, resolveSemanticClaim, type BlockAnnotationKind, type BlockAnnotationStatus } from './semanticDocument.ts'
+import { getWorkspaceReviews } from './workspaceReviews.ts'
 
 export type ReviewFilter = {
   owner?: string
@@ -63,10 +64,10 @@ export function getReviewInboxSummary(workspace: WorkspaceState, owner?: string)
 }
 
 export function getDocumentReviewGate(workspace: WorkspaceState): DocumentReviewGate {
-  const semantic = getSemanticDocument(workspace)
-  const pendingApprovals = semantic.annotations.filter((annotation) => annotation.kind === 'approval' && annotation.status !== 'approved').length
-  const openTasks = semantic.annotations.filter((annotation) => annotation.kind === 'task' && annotation.status !== 'resolved').length
-  const unresolvedComments = semantic.annotations.filter((annotation) => annotation.kind === 'comment' && annotation.status !== 'resolved').length
+  const semantic = getSemanticDocument(workspace),crossSurface=getWorkspaceReviews(workspace)
+  const pendingApprovals = semantic.annotations.filter((annotation) => annotation.kind === 'approval' && annotation.status !== 'approved').length + crossSurface.filter((review)=>review.kind==='approval'&&review.status!=='approved').length
+  const openTasks = semantic.annotations.filter((annotation) => annotation.kind === 'task' && annotation.status !== 'resolved').length + crossSurface.filter((review)=>review.kind==='task'&&review.status!=='resolved').length
+  const unresolvedComments = semantic.annotations.filter((annotation) => annotation.kind === 'comment' && annotation.status !== 'resolved').length + crossSurface.filter((review)=>review.kind==='comment'&&review.status!=='resolved').length
   const blockers: string[] = []
   const warnings: string[] = []
 
