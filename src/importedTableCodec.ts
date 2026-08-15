@@ -50,6 +50,7 @@ export function parseImportedDataTable(value:unknown):ImportedDataTable{
     for(const review of promotedReviews){
       if(reviewIds.has(review.id))throw new Error(`table.promotedReviews contains duplicate id ${review.id}`);reviewIds.add(review.id)
       const sourceReview=review.sourceReview;if(!sourceReview)continue
+      if(sourceReview.kind==='word-comment')throw new Error(`Promoted review ${review.id} cannot store Word provenance on an imported spreadsheet table`)
       if(sourceReview.tableId!==tableId||sourceReview.source!==source)throw new Error(`Promoted review ${review.id} source must match its imported table`)
       if(!rowIds.has(sourceReview.rowId)||!columnIds.has(sourceReview.columnId))throw new Error(`Promoted review ${review.id} references an unknown source cell`)
       if(review.objectId!==`table:${tableId}:${sourceReview.rowId}`)throw new Error(`Promoted review ${review.id} target must match its source Data row`)
