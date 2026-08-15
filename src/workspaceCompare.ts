@@ -3,9 +3,10 @@ import { getImportedTables, importedTableCellKey } from './importedTables.ts'
 import { getPresentationState } from './presentationState.ts'
 import { getSemanticDocument } from './semanticDocument.ts'
 
-export type WorkspaceVersionDiff = { objectId: string; label: string; field: string; before: string | number | null; after: string | number | null; change: 'changed' | 'added' | 'removed' }
+export type WorkspaceVersionValue = string | number | boolean | null
+export type WorkspaceVersionDiff = { objectId: string; label: string; field: string; before: WorkspaceVersionValue; after: WorkspaceVersionValue; change: 'changed' | 'added' | 'removed' }
 function objectLabel(workspace: WorkspaceState, objectId: string) { return workspace.graph.objects.find((object) => object.id === objectId)?.label ?? objectId }
-function add(diffs: WorkspaceVersionDiff[], workspace: WorkspaceState, objectId: string, field: string, before: string | number | null | undefined, after: string | number | null | undefined) {
+function add(diffs: WorkspaceVersionDiff[], workspace: WorkspaceState, objectId: string, field: string, before: WorkspaceVersionValue | undefined, after: WorkspaceVersionValue | undefined) {
   const left = before ?? null, right = after ?? null
   if (Object.is(left, right)) return
   diffs.push({ objectId, label: objectLabel(workspace, objectId), field, before: left, after: right, change: left === null ? 'added' : right === null ? 'removed' : 'changed' })
@@ -59,7 +60,7 @@ export function compareWorkspaceStates(before: WorkspaceState, after: WorkspaceS
   for(const id of new Set([...beforeTables.map((table)=>table.id),...afterTables.map((table)=>table.id)])){
     const l=beforeTables.find((table)=>table.id===id),r=afterTables.find((table)=>table.id===id)
     if(!l||!r){add(diffs,after,`table:${id}`,'importedTable',l?JSON.stringify(l):null,r?JSON.stringify(r):null);continue}
-    add(diffs,after,`table:${id}`,'label',l.label,r.label);add(diffs,after,`table:${id}`,'source',l.source,r.source)
+    add(diffs,after,`table:${id}`,'label',l.label,r.label);add(diffs,after,`table:${id}`,'source',l.source,r.source);add(diffs,after,`table:${id}`,'sourceVisibility',l.sourceVisibility??'visible',r.sourceVisibility??'visible')
     const beforeColumns=new Map(l.columns.map((column)=>[column.id,column])),afterColumns=new Map(r.columns.map((column)=>[column.id,column]))
     for(const columnId of new Set([...beforeColumns.keys(),...afterColumns.keys()])){
       const lc=beforeColumns.get(columnId),rc=afterColumns.get(columnId)
