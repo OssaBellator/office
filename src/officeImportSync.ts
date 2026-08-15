@@ -5,7 +5,7 @@ import type { OfficeImportPlan } from './officeImportPlanner.ts'
 import { getPresentationState } from './presentationState.ts'
 import { getSemanticDocument } from './semanticDocument.ts'
 import type { VersionedWorkspaceCommand } from './semanticCommands.ts'
-import { getWorkspaceReviews, type WorkspaceReviewRecord, type WorkspaceReviewSource } from './workspaceReviews.ts'
+import { getWorkspaceReviews, type ExcelWorkspaceReviewSource, type WorkspaceReviewRecord } from './workspaceReviews.ts'
 
 type SourceReviewCell={rowId:string;columnId:string;sourceReviewId:string}
 type SpreadsheetSyncResult={archivedReviewCount:number;remappedReviewCount:number}
@@ -21,7 +21,7 @@ function findThreadSourceReview(next:ImportedDataTable,sourceReviewId:string):So
   }
   return null
 }
-function findClassicSourceReview(previous:ImportedDataTable,next:ImportedDataTable,sourceReview:WorkspaceReviewSource):SourceReviewCell|null{
+function findClassicSourceReview(previous:ImportedDataTable,next:ImportedDataTable,sourceReview:ExcelWorkspaceReviewSource):SourceReviewCell|null{
   const nextItems=tableReviewItems(next)
   const exact=nextItems.find((item)=>item.sourceReviewId===sourceReview.sourceReviewId)
   if(exact)return{rowId:exact.rowId,columnId:exact.columnId,sourceReviewId:exact.sourceReviewId}
@@ -38,15 +38,14 @@ function findClassicSourceReview(previous:ImportedDataTable,next:ImportedDataTab
   if(nextRow&&next.columns.some((column)=>column.id===sourceReview.columnId))return{rowId:nextRow.id,columnId:sourceReview.columnId,sourceReviewId:sourceReview.sourceReviewId}
   return null
 }
-function findSourceReviewCell(previous:ImportedDataTable,next:ImportedDataTable,sourceReview:WorkspaceReviewSource){
+function findSourceReviewCell(previous:ImportedDataTable,next:ImportedDataTable,sourceReview:ExcelWorkspaceReviewSource){
   return sourceReview.kind==='excel-thread'?findThreadSourceReview(next,sourceReview.sourceReviewId):findClassicSourceReview(previous,next,sourceReview)
 }
 function reviewArchive(previous:ImportedDataTable):ImportedDataTable{
   const clean=withoutLegacyReviews(previous),suffix=' · review archive',label=clean.label.endsWith(suffix)?clean.label:`${clean.label}${suffix}`
   return{...clean,label}
 }
-function remapReview(review:WorkspaceReviewRecord,next:ImportedDataTable,match:SourceReviewCell):WorkspaceReviewRecord{
-  const sourceReview=review.sourceReview!
+function remapReview(review:WorkspaceReviewRecord,sourceReview:ExcelWorkspaceReviewSource,next:ImportedDataTable,match:SourceReviewCell):WorkspaceReviewRecord{
   const column=next.columns.find((candidate)=>candidate.id===match.columnId)
   return{...review,objectId:`table:${next.id}:${match.rowId}`,label:`${next.label} · ${column?.label??match.columnId}`,sourceReview:{...sourceReview,source:next.source,tableId:next.id,rowId:match.rowId,columnId:match.columnId,sourceReviewId:match.sourceReviewId}}
 }
@@ -71,13 +70,13 @@ function synchronizeImportedTables(workspace:WorkspaceState,commands:VersionedWo
   let archivedReviewCount=0,remappedReviewCount=0
   const nextReviews=reviews.map((review)=>{
     const sourceReview=review.sourceReview
-    if(!sourceReview||sourceReview.source!==fileName)return review
+    if(!sourceReview||sourceReview.kind==='word-comment'||sourceReview.source!==fileName)return review
     const previous=priorSource.find((table)=>table.id===sourceReview.tableId)
     if(!previous)return review
     const next=plannedNewTables.find((table)=>table.label===sourceTableLabel(previous))
     if(next){
       const match=findSourceReviewCell(previous,next,sourceReview)
-      if(match){remappedReviewCount+=1;return remapReview(review,next,match)}
+      if(match){remappedReviewCount+=1;return remapReview(review,sourceReview,next,match)}
     }
     archivedReviewCount+=1
     if(!archiveByTableId.has(previous.id))archiveByTableId.set(previous.id,reviewArchive(previous))
