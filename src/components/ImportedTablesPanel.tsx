@@ -7,7 +7,11 @@ import type { VersionedWorkspaceCommand } from '../semanticCommands'
 export function ImportedTablesPanel({ workspace, focusedObjectId, onSemanticCommand }: { workspace:WorkspaceState; focusedObjectId?:string|null; onSemanticCommand:(command:VersionedWorkspaceCommand)=>void }) {
   const tables=getImportedTables(workspace)
   if(!tables.length)return null
-  const remove=(id:string)=>onSemanticCommand({type:'data.imported.replace',tables:tables.filter((table)=>table.id!==id)})
+  const remove=(id:string)=>{
+    const target=tables.find((table)=>table.id===id)
+    if(target?.promotedReviews?.length)return
+    onSemanticCommand({type:'data.imported.replace',tables:tables.filter((table)=>table.id!==id)})
+  }
   const updateCell=(tableId:string,rowId:string,columnId:string,value:ImportedTableCell)=>{
     const next=tables.map((table)=>{
       if(table.id!==tableId)return table
@@ -20,11 +24,14 @@ export function ImportedTablesPanel({ workspace, focusedObjectId, onSemanticComm
   }
   return <section className="imported-tables-panel">
     <div className="imported-tables-heading"><div><span>IMPORTED WORKBOOK TABLES</span><h2>Foreign schemas kept intact</h2><p>Sheets that do not match the live finance model remain structured and editable instead of being discarded. Boolean cells, source sheet visibility, Excel number-format provenance, hyperlinks, classic notes, threaded review conversations, native promoted Frame review, and original formulas are retained. Editing a value replaces its imported formula but keeps display-format, link, and review provenance.</p></div><small>{tables.length} table{tables.length===1?'':'s'}</small></div>
-    <div className="imported-table-stack">{tables.map((table)=><article className={focusedObjectId===`table:${table.id}`?'imported-table-card frame-object-focused':'imported-table-card'} data-frame-object={`table:${table.id}`} key={table.id}>
-      <header><div><Database size={14}/><div><strong>{table.label}</strong><span>{importedTableSummary(table)} · {table.source}</span></div></div><button onClick={()=>remove(table.id)} title={`Remove ${table.label}`}><Trash2 size={13}/></button></header>
-      <div className="imported-table-scroll"><table><thead><tr>{table.columns.map((column)=><th key={column.id}>{column.label}<small>{column.type}</small></th>)}</tr></thead><tbody>{table.rows.slice(0,100).map((row)=><tr key={row.id}>{table.columns.map((column)=><td key={column.id}><ImportedCell table={table} rowId={row.id} columnId={column.id} value={row.values[column.id]??null} onCommit={updateCell}/></td>)}</tr>)}</tbody></table></div>
-      {table.rows.length>100&&<footer>Showing first 100 of {table.rows.length} imported rows.</footer>}
-    </article>)}</div>
+    <div className="imported-table-stack">{tables.map((table)=>{
+      const protectedReviewCount=table.promotedReviews?.length??0
+      return <article className={focusedObjectId===`table:${table.id}`?'imported-table-card frame-object-focused':'imported-table-card'} data-frame-object={`table:${table.id}`} key={table.id}>
+        <header><div><Database size={14}/><div><strong>{table.label}</strong><span>{importedTableSummary(table)} · {table.source}</span></div></div><button disabled={protectedReviewCount>0} onClick={()=>remove(table.id)} title={protectedReviewCount?`${table.label} has ${protectedReviewCount} native Frame review record${protectedReviewCount===1?'':'s'}. Resolve or migrate that review work before removing the source table.`:`Remove ${table.label}`}><Trash2 size={13}/></button></header>
+        <div className="imported-table-scroll"><table><thead><tr>{table.columns.map((column)=><th key={column.id}>{column.label}<small>{column.type}</small></th>)}</tr></thead><tbody>{table.rows.slice(0,100).map((row)=><tr key={row.id}>{table.columns.map((column)=><td key={column.id}><ImportedCell table={table} rowId={row.id} columnId={column.id} value={row.values[column.id]??null} onCommit={updateCell}/></td>)}</tr>)}</tbody></table></div>
+        {table.rows.length>100&&<footer>Showing first 100 of {table.rows.length} imported rows.</footer>}
+      </article>
+    })}</div>
   </section>
 }
 
