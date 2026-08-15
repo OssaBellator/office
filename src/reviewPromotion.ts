@@ -3,12 +3,12 @@ import { getImportedTables } from './importedTables.ts'
 import { getImportedThreadedReviewItems } from './importedThreadedReview.ts'
 import type { WorkspaceState } from './model.ts'
 import type { VersionedWorkspaceCommand } from './semanticCommands.ts'
-import type { WorkspaceReviewKind, WorkspaceReviewRecord, WorkspaceReviewStatus } from './workspaceReviews.ts'
+import { getWorkspaceReviews, type WorkspaceReviewKind, type WorkspaceReviewRecord, type WorkspaceReviewStatus } from './workspaceReviews.ts'
 
 export type SourceReviewPromotion={
   sourceItemId:string
   review:WorkspaceReviewRecord
-  command:Extract<VersionedWorkspaceCommand,{type:'data.imported.replace'}>
+  command:Extract<VersionedWorkspaceCommand,{type:'review.workspace.replace'}>
 }
 
 function sourcePromotion(workspace:WorkspaceState,sourceItemId:string){
@@ -23,7 +23,7 @@ function promotedReviewId(sourceReviewId:string){return`frame-review:${sourceRev
 
 export function findPromotedSourceReview(workspace:WorkspaceState,sourceItemId:string){
   const source=sourcePromotion(workspace,sourceItemId)
-  return getImportedTables(workspace).flatMap((table)=>table.promotedReviews??[]).find((review)=>review.sourceReview?.source===source.source&&review.sourceReview.sourceReviewId===source.sourceReviewId)
+  return getWorkspaceReviews(workspace).find((review)=>review.sourceReview?.source===source.source&&review.sourceReview.sourceReviewId===source.sourceReviewId)
 }
 
 export function planPromoteSourceReview(
@@ -32,8 +32,7 @@ export function planPromoteSourceReview(
   options:{kind?:WorkspaceReviewKind;owner?:string;body?:string;createdAt?:string}={},
 ):SourceReviewPromotion{
   const source=sourcePromotion(workspace,sourceItemId)
-  const tables=getImportedTables(workspace),tableIndex=tables.findIndex((table)=>table.id===source.tableId&&table.source===source.source)
-  if(tableIndex<0)throw new Error(`Imported review source table no longer exists: ${source.tableId}`)
+  if(!getImportedTables(workspace).some((table)=>table.id===source.tableId&&table.source===source.source))throw new Error(`Imported review source table no longer exists: ${source.tableId}`)
   const existing=findPromotedSourceReview(workspace,sourceItemId)
   if(existing)throw new Error(`Source review is already promoted as ${existing.id}`)
   const kind=options.kind??'task',status:WorkspaceReviewStatus=kind==='approval'?'pending':'open'
@@ -52,18 +51,12 @@ export function planPromoteSourceReview(
     createdAt:options.createdAt??'just now',
     sourceReview:{kind:source.kind,source:source.source,tableId:source.tableId,rowId:source.rowId,columnId:source.columnId,sourceReviewId:source.sourceReviewId},
   }
-  const table=tables[tableIndex],promotedReviews=[...(table.promotedReviews??[]),review]
-  tables[tableIndex]={...table,promotedReviews}
-  return{sourceItemId,review,command:{type:'data.imported.replace',tables}}
+  return{sourceItemId,review,command:{type:'review.workspace.replace',reviews:[...getWorkspaceReviews(workspace),review]}}
 }
 
-export function planWorkspaceReviewStatusUpdate(workspace:WorkspaceState,reviewId:string,status:WorkspaceReviewStatus):Extract<VersionedWorkspaceCommand,{type:'data.imported.replace'}>{
-  const tables=getImportedTables(workspace);let found=false
-  for(let index=0;index<tables.length;index++){
-    const table=tables[index],review=table.promotedReviews?.find((item)=>item.id===reviewId);if(!review)continue
-    const allowed=review.kind==='approval'?['pending','approved']:['open','resolved'];if(!allowed.includes(status))throw new Error(`${review.kind} review cannot use status ${status}`)
-    tables[index]={...table,promotedReviews:table.promotedReviews!.map((item)=>item.id===reviewId?{...item,status}:item)};found=true;break
-  }
-  if(!found)throw new Error(`Unknown promoted workspace review: ${reviewId}`)
-  return{type:'data.imported.replace',tables}
+export function planWorkspaceReviewStatusUpdate(workspace:WorkspaceState,reviewId:string,status:WorkspaceReviewStatus):Extract<VersionedWorkspaceCommand,{type:'review.workspace.replace'}>{
+  const reviews=getWorkspaceReviews(workspace),review=reviews.find((item)=>item.id===reviewId)
+  if(!review)throw new Error(`Unknown promoted workspace review: ${reviewId}`)
+  const allowed=review.kind==='approval'?['pending','approved']:['open','resolved'];if(!allowed.includes(status))throw new Error(`${review.kind} review cannot use status ${status}`)
+  return{type:'review.workspace.replace',reviews:reviews.map((item)=>item.id===reviewId?{...item,status}:item)}
 }
