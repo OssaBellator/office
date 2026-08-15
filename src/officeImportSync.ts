@@ -1,21 +1,38 @@
-import { getImportedTables } from './importedTables.ts'
+import { getImportedTables, type ImportedDataTable } from './importedTables.ts'
 import type { WorkspaceState } from './model.ts'
 import type { OfficeImportPlan } from './officeImportPlanner.ts'
 import { getPresentationState } from './presentationState.ts'
 import { getSemanticDocument } from './semanticDocument.ts'
 import type { VersionedWorkspaceCommand } from './semanticCommands.ts'
 
+function remapPromotedReviews(previous:ImportedDataTable,next:ImportedDataTable):ImportedDataTable{
+  const promotedReviews=(previous.promotedReviews??[]).flatMap((review)=>{
+    const sourceReview=review.sourceReview;if(!sourceReview)return[]
+    const oldRowIndex=previous.rows.findIndex((row)=>row.id===sourceReview.rowId),columnExists=next.columns.some((column)=>column.id===sourceReview.columnId),nextRow=oldRowIndex>=0?next.rows[oldRowIndex]:undefined
+    if(!nextRow||!columnExists)return[]
+    return[{...review,objectId:`table:${next.id}:${nextRow.id}`,label:`${next.label} · ${next.columns.find((column)=>column.id===sourceReview.columnId)?.label??sourceReview.columnId}`,sourceReview:{...sourceReview,source:next.source,tableId:next.id,rowId:nextRow.id}}]
+  })
+  return promotedReviews.length?{...next,promotedReviews}:next
+}
+
 function synchronizeImportedTables(workspace:WorkspaceState,commands:VersionedWorkspaceCommand[],fileName:string){
   const existing=getImportedTables(workspace)
   const existingIds=new Set(existing.map((table)=>table.id))
+  const priorSource=existing.filter((table)=>table.source===fileName)
   const retained=existing.filter((table)=>table.source!==fileName)
   const replacementIndex=commands.findIndex((command)=>command.type==='data.imported.replace')
   if(replacementIndex>=0){
     const command=commands[replacementIndex] as Extract<VersionedWorkspaceCommand,{type:'data.imported.replace'}>
-    const newlyPlanned=command.tables.filter((table)=>!existingIds.has(table.id))
-    commands[replacementIndex]={type:'data.imported.replace',tables:[...retained,...newlyPlanned],...(command.changedAt?{changedAt:command.changedAt}:{})}
+    const newlyPlanned=command.tables.filter((table)=>!existingIds.has(table.id)).map((table)=>{
+      const previous=priorSource.find((item)=>item.label===table.label)
+      return previous?remapPromotedReviews(previous,table):table
+    })
+    const replacedLabels=new Set(newlyPlanned.map((table)=>table.label))
+    const reviewAnchors=priorSource.filter((table)=>!replacedLabels.has(table.label)&&(table.promotedReviews?.length??0)>0)
+    commands[replacementIndex]={type:'data.imported.replace',tables:[...retained,...newlyPlanned,...reviewAnchors],...(command.changedAt?{changedAt:command.changedAt}:{})}
   }else if(retained.length!==existing.length){
-    commands.push({type:'data.imported.replace',tables:retained})
+    const reviewAnchors=priorSource.filter((table)=>(table.promotedReviews?.length??0)>0)
+    commands.push({type:'data.imported.replace',tables:[...retained,...reviewAnchors]})
   }
 }
 
