@@ -18,6 +18,7 @@ function record(id:string,kind:SearchObjectKind,title:string,text:string,surface
 function visibilityText(value:'visible'|'hidden'|'veryHidden'|undefined){return value==='veryHidden'?'very hidden':value??'visible'}
 function numberFormatText(table:ReturnType<typeof getImportedTables>[number]){return Object.values(table.numberFormatByCell??{}).map((format)=>format.formatCode??`numFmt ${format.numFmtId}`).join(' ')}
 function hyperlinkText(table:ReturnType<typeof getImportedTables>[number]){return Object.values(table.linkByCell??{}).map((link)=>`${link.kind} hyperlink ${link.target} ${link.display??''} ${link.tooltip??''}`).join(' ')}
+function commentText(table:ReturnType<typeof getImportedTables>[number]){return Object.values(table.commentByCell??{}).map((comment)=>`cell note ${comment.author??''} ${comment.text}`).join(' ')}
 
 export function buildWorkspaceSearchIndex(workspace: WorkspaceState): WorkspaceSearchRecord[] {
   const semantic = getSemanticDocument(workspace)
@@ -38,7 +39,7 @@ export function buildWorkspaceSearchIndex(workspace: WorkspaceState): WorkspaceS
   for (const metric of workspace.metrics) records.push(record(`metric:${metric.id}`,'metric',metric.label,`${formatMetric(metric)} ${metric.formula ?? ''} ${metric.source}`,['data','docs','present']))
   for (const row of workspace.regions) records.push(record(`region:${row.id}`,'region',row.region,`revenue ${row.revenue} growth ${row.growth}% margin ${row.margin}%`,['data']))
   for (const row of workspace.plans) records.push(record(`plan:${row.id}`,'plan',`${row.region} plan`,`revenue ${row.revenue}`,['data']))
-  for (const table of getImportedTables(workspace)) records.push(record(`table:${table.id}`,'table',table.label,`${table.source} source visibility ${visibilityText(table.sourceVisibility)} date system ${table.sourceDateSystem??'1900'} ${table.columns.map((column)=>`${column.label} ${column.type}`).join(' ')} ${table.rows.slice(0,20).flatMap((row)=>Object.values(row.values)).join(' ')} ${Object.values(table.formulaByCell??{}).join(' ')} ${numberFormatText(table)} ${hyperlinkText(table)}`,['data']))
+  for (const table of getImportedTables(workspace)) records.push(record(`table:${table.id}`,'table',table.label,`${table.source} source visibility ${visibilityText(table.sourceVisibility)} date system ${table.sourceDateSystem??'1900'} ${table.columns.map((column)=>`${column.label} ${column.type}`).join(' ')} ${table.rows.slice(0,20).flatMap((row)=>Object.values(row.values)).join(' ')} ${Object.values(table.formulaByCell??{}).join(' ')} ${numberFormatText(table)} ${hyperlinkText(table)} ${commentText(table)}`,['data']))
   for (const decision of workspace.decisions) records.push(record(`decision:${decision.id}`,'decision',decision.title,`${decision.status} ${decision.owner} ${decision.rationale}`,['docs','present']))
   for (const chart of workspace.charts) records.push(record(`chart:${chart.id}`,'chart',chart.label,`${chart.kind} ${chart.relationshipId} ${chart.series.map((series)=>`${series.tableId}.${series.fieldId}`).join(' ')}`,['data','present']))
   for (const relationship of workspace.relationships) records.push(record(relationship.id,'relationship',relationship.label,`${relationship.fromTable}.${relationship.fromField} ${relationship.toTable}.${relationship.toField} ${relationship.cardinality}`,['data']))
