@@ -86,7 +86,7 @@ export function listWorkspaceReviewInbox(workspace:WorkspaceState):WorkspaceRevi
     source:item.source,
     replyCount:item.replyCount,
     participants:item.participants,
-    promotedReviewId:promotedBySource.get(`${item.source}|${item.root.id}`),
+    promotedReviewId:promotedBySource.get(`${item.source}|${item.sourceReviewId}`),
     actionable:false,
   })).sort((left,right)=>(left.sourceStatus==='resolved'?1:0)-(right.sourceStatus==='resolved'?1:0)||left.label.localeCompare(right.label))
   const notes=getImportedDataReviewItems(workspace).map((item):ImportedWorkspaceReviewItem=>({
@@ -99,7 +99,7 @@ export function listWorkspaceReviewInbox(workspace:WorkspaceState):WorkspaceRevi
     owner:item.author??'Source author',
     status:'source',
     source:item.source,
-    promotedReviewId:promotedBySource.get(`${item.source}|${item.id}`),
+    promotedReviewId:promotedBySource.get(`${item.source}|${item.sourceReviewId}`),
     actionable:false,
   }))
   return[...documentNative,...promotedNative,...threads,...notes]
