@@ -48,7 +48,7 @@ export function buildWorkspaceDiagnostics(workspace: WorkspaceState): WorkspaceD
     if (annotation.kind === 'task' && annotation.status !== 'resolved') diagnostics.push(diagnostic(`task-open:${annotation.id}`, 'info', 'reviews', `Open task for ${annotation.owner}: ${annotation.body}`, [annotation.id, annotation.blockId]))
     if (annotation.kind === 'comment' && annotation.status !== 'resolved') diagnostics.push(diagnostic(`comment-open:${annotation.id}`, 'info', 'reviews', `Unresolved comment: ${annotation.body}`, [annotation.id, annotation.blockId]))
   }
-  for (const review of getWorkspaceReviews(workspace)) {
+  for (const review of getWorkspaceReviews(workspace).filter((item)=>!item.sourceOnly)) {
     const sourceLabel=review.sourceReview?` · promoted from ${review.sourceReview.source}`:''
     if (review.kind === 'approval' && review.status !== 'approved') diagnostics.push(diagnostic(`workspace-review-approval:${review.id}`, 'warning', 'reviews', `Approval pending on ${review.label}: ${review.body}${sourceLabel}`, [review.id, review.objectId]))
     if (review.kind === 'task' && review.status !== 'resolved') diagnostics.push(diagnostic(`workspace-review-task:${review.id}`, 'info', 'reviews', `Open task on ${review.label} for ${review.owner}: ${review.body}${sourceLabel}`, [review.id, review.objectId]))
@@ -87,7 +87,7 @@ export function buildWorkspaceDiagnostics(workspace: WorkspaceState): WorkspaceD
 export function assessWorkspaceReadiness(workspace: WorkspaceState): WorkspaceReadiness {
   const diagnostics = buildWorkspaceDiagnostics(workspace)
   const semantic = getSemanticDocument(workspace)
-  const crossSurfaceReviews=getWorkspaceReviews(workspace)
+  const crossSurfaceReviews=getWorkspaceReviews(workspace).filter((review)=>!review.sourceOnly)
   const openApprovals = semantic.annotations.filter((annotation) => annotation.kind === 'approval' && annotation.status !== 'approved').length + crossSurfaceReviews.filter((review)=>review.kind==='approval'&&review.status!=='approved').length
   const openTasks = semantic.annotations.filter((annotation) => annotation.kind === 'task' && annotation.status !== 'resolved').length + crossSurfaceReviews.filter((review)=>review.kind==='task'&&review.status!=='resolved').length
   const errors = diagnostics.filter((item) => item.severity === 'error').length
