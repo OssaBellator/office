@@ -17,6 +17,12 @@ export type WordWorkspaceReviewSource={
   source:string
   blockId:string
   sourceReviewId:string
+  commentId?:string
+  paraId?:string
+  parentSourceReviewId?:string
+  durableId?:string
+  done?:boolean
+  dateUtc?:string
 }
 export type WorkspaceReviewSource=ExcelWorkspaceReviewSource|WordWorkspaceReviewSource
 export type WorkspaceReviewRecord={
