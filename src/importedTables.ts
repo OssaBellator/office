@@ -8,6 +8,19 @@ export type ImportedNumberFormat = { numFmtId:number; formatCode?:string }
 export type ImportedDateSystem = '1900'|'1904'
 export type ImportedCellLink = { kind:'external'|'internal'; target:string; display?:string; tooltip?:string }
 export type ImportedCellComment = { text:string; author?:string }
+export type ImportedReviewPerson = { id:string; displayName:string; userId?:string; providerId?:string }
+export type ImportedThreadedMention = { personId:string; mentionId:string; startIndex:number; length:number; displayName?:string }
+export type ImportedThreadedComment = {
+  id:string
+  personId:string
+  author:string
+  text:string
+  parentId?:string
+  createdAt?:string
+  done?:boolean
+  mentions?:ImportedThreadedMention[]
+}
+export type ImportedCellReviewThread = { comments:ImportedThreadedComment[] }
 export type ImportedDataTable = {
   id:string
   label:string
@@ -19,6 +32,7 @@ export type ImportedDataTable = {
   numberFormatByCell?:Record<string,ImportedNumberFormat>
   linkByCell?:Record<string,ImportedCellLink>
   commentByCell?:Record<string,ImportedCellComment>
+  threadByCell?:Record<string,ImportedCellReviewThread>
   sourceVisibility?:ImportedSheetVisibility
   sourceDateSystem?:ImportedDateSystem
 }
@@ -38,6 +52,7 @@ export function getImportedTableFormula(table:ImportedDataTable,rowId:string,col
 export function getImportedTableNumberFormat(table:ImportedDataTable,rowId:string,columnId:string){return table.numberFormatByCell?.[importedTableCellKey(rowId,columnId)]}
 export function getImportedTableLink(table:ImportedDataTable,rowId:string,columnId:string){return table.linkByCell?.[importedTableCellKey(rowId,columnId)]}
 export function getImportedTableComment(table:ImportedDataTable,rowId:string,columnId:string){return table.commentByCell?.[importedTableCellKey(rowId,columnId)]}
+export function getImportedTableThread(table:ImportedDataTable,rowId:string,columnId:string){return table.threadByCell?.[importedTableCellKey(rowId,columnId)]}
 export function isSafeNavigableImportedLink(link:ImportedCellLink){
   if(link.kind==='internal')return true
   try{const protocol=new URL(link.target).protocol.toLowerCase();return protocol==='https:'||protocol==='http:'||protocol==='mailto:'}catch{return false}
@@ -80,7 +95,9 @@ export function importedTableSummary(table: ImportedDataTable) {
   const formats=Object.keys(table.numberFormatByCell??{}).length
   const links=Object.keys(table.linkByCell??{}).length
   const notes=Object.keys(table.commentByCell??{}).length
+  const threads=Object.keys(table.threadByCell??{}).length
+  const replies=Object.values(table.threadByCell??{}).reduce((sum,thread)=>sum+Math.max(0,thread.comments.length-1),0)
   const visibility=table.sourceVisibility&&table.sourceVisibility!=='visible'?` · source ${table.sourceVisibility==='veryHidden'?'very hidden':'hidden'}`:''
   const dateSystem=table.sourceDateSystem==='1904'?' · 1904 date system':''
-  return `${table.label} · ${table.rows.length} rows × ${table.columns.length} columns${formulas?` · ${formulas} preserved formula${formulas===1?'':'s'}`:''}${formats?` · ${formats} number format${formats===1?'':'s'}`:''}${links?` · ${links} link${links===1?'':'s'}`:''}${notes?` · ${notes} note${notes===1?'':'s'}`:''}${visibility}${dateSystem}`
+  return `${table.label} · ${table.rows.length} rows × ${table.columns.length} columns${formulas?` · ${formulas} preserved formula${formulas===1?'':'s'}`:''}${formats?` · ${formats} number format${formats===1?'':'s'}`:''}${links?` · ${links} link${links===1?'':'s'}`:''}${notes?` · ${notes} note${notes===1?'':'s'}`:''}${threads?` · ${threads} review thread${threads===1?'':'s'}${replies?` + ${replies} repl${replies===1?'y':'ies'}`:''}`:''}${visibility}${dateSystem}`
 }
