@@ -9,7 +9,7 @@
   "scripts": {
     "dev": "vite",
     "test": "node --experimental-strip-types --test tests/*.test.mjs",
-    "test:interop": "node --experimental-strip-types --test tests/office*.test.mjs tests/google*.test.mjs tests/importedTables.test.mjs tests/importedDataReview.test.mjs tests/importedReviewWiring.test.mjs tests/interoperability*.test.mjs tests/reviewPromotion.test.mjs tests/workspaceReviewCompare.test.mjs tests/workspaceReviewInbox.test.mjs tests/xlsx*.test.mjs tests/importEntryPoints.test.mjs",
+    "test:interop": "node --experimental-strip-types --test tests/office*.test.mjs tests/google*.test.mjs tests/importedTables.test.mjs tests/importedDataReview.test.mjs tests/importedReviewWiring.test.mjs tests/interoperability*.test.mjs tests/reviewPromotion.test.mjs tests/reviewRelink.test.mjs tests/workspaceReviewCompare.test.mjs tests/workspaceReviewInbox.test.mjs tests/xlsx*.test.mjs tests/importEntryPoints.test.mjs",
     "test:watch": "node --experimental-strip-types --test --watch tests/*.test.mjs",
     "typecheck": "tsc --noEmit",
     "build": "tsc --noEmit && vite build",
