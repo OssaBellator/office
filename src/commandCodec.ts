@@ -1,9 +1,9 @@
 import type { Metric } from './model.ts'
-import type { ImportedCellLink, ImportedDataTable, ImportedTableCell, ImportedNumberFormat } from './importedTables.ts'
 import { parseImportedDataTable } from './importedTableCodec.ts'
 import type { VersionedWorkspaceCommand } from './semanticCommands.ts'
 import type { BlockAnnotation, SemanticCitation, SemanticClaim, SemanticDocumentBlock, SemanticDocumentState, SemanticParagraphStyle } from './semanticDocument.ts'
 import type { ImportedPresentationScene, PresentationSceneId, PresentationState } from './presentationState.ts'
+import { parseWorkspaceReviewRecord } from './workspaceReviewCodec.ts'
 
 function record(value: unknown): Record<string, unknown> {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('Command must be a JSON object')
@@ -17,7 +17,6 @@ function oneOf<T extends string>(value: unknown, field: string, allowed: readonl
 function array(value: unknown, field: string) { if (!Array.isArray(value)) throw new Error(`${field} must be an array`); return value }
 function timestamp(changedAt: string | undefined) { return changedAt === undefined ? {} : { changedAt } }
 function sceneId(value: unknown, field: string): PresentationSceneId { const result=text(value,field);if(result==='thesis'||result==='performance'||result==='signal'||result==='decision'||result.startsWith('imported:'))return result as PresentationSceneId;throw new Error(`${field} must be a built-in or imported presentation scene id`) }
-function importedCell(value:unknown,field:string):ImportedTableCell{if(value===null||typeof value==='string'||typeof value==='boolean')return value;if(typeof value==='number'&&Number.isFinite(value))return value;throw new Error(`${field} must be text, a finite number, a boolean, or null`)}
 
 function parseMetric(value: unknown): Metric {
   const input=record(value)
@@ -31,46 +30,6 @@ function parseMetric(value: unknown): Metric {
     updatedAt:text(input.updatedAt,'metric.updatedAt'),
     formula:input.formula===undefined?undefined:text(input.formula,'metric.formula'),
   }
-}
-function parseImportedNumberFormat(value:unknown,field:string):ImportedNumberFormat{
-  const input=record(value),numFmtId=number(input.numFmtId,`${field}.numFmtId`)
-  if(!Number.isInteger(numFmtId)||numFmtId<0)throw new Error(`${field}.numFmtId must be a non-negative integer`)
-  const formatCode=input.formatCode===undefined?undefined:text(input.formatCode,`${field}.formatCode`)
-  return{numFmtId,...(formatCode!==undefined?{formatCode}:{})}
-}
-function parseImportedCellLink(value:unknown,field:string):ImportedCellLink{
-  const input=record(value),kind=oneOf(input.kind,`${field}.kind`,['external','internal'] as const),target=text(input.target,`${field}.target`)
-  if(!target.trim())throw new Error(`${field}.target must not be blank`)
-  const display=input.display===undefined?undefined:text(input.display,`${field}.display`),tooltip=input.tooltip===undefined?undefined:text(input.tooltip,`${field}.tooltip`)
-  return{kind,target,...(display!==undefined?{display}:{}),...(tooltip!==undefined?{tooltip}:{})}
-}
-function parseImportedTable(value:unknown):ImportedDataTable{
-  const input=record(value)
-  const columns=array(input.columns,'table.columns').map((item,index)=>{const column=record(item);return{id:text(column.id,`table.columns[${index}].id`),label:text(column.label,`table.columns[${index}].label`),type:oneOf(column.type,`table.columns[${index}].type`,['text','number','boolean'] as const)}})
-  const columnIds=new Set(columns.map((column)=>column.id))
-  const rows=array(input.rows,'table.rows').map((item,rowIndex)=>{const row=record(item),values=record(row.values);for(const key of Object.keys(values))if(!columnIds.has(key))throw new Error(`table.rows[${rowIndex}].values contains unknown column ${key}`);return{id:text(row.id,`table.rows[${rowIndex}].id`),values:Object.fromEntries(columns.map((column)=>[column.id,importedCell(values[column.id]??null,`table.rows[${rowIndex}].values.${column.id}`)]))}})
-  const validKeys=new Set(rows.flatMap((row)=>columns.map((column)=>`${row.id}\u0000${column.id}`)))
-  let formulaByCell:Record<string,string>|undefined
-  if(input.formulaByCell!==undefined){
-    const raw=record(input.formulaByCell);formulaByCell={}
-    for(const [key,value] of Object.entries(raw)){if(!validKeys.has(key))throw new Error(`table.formulaByCell contains unknown cell ${key}`);formulaByCell[key]=text(value,`table.formulaByCell.${key}`)}
-    if(!Object.keys(formulaByCell).length)formulaByCell=undefined
-  }
-  let numberFormatByCell:Record<string,ImportedNumberFormat>|undefined
-  if(input.numberFormatByCell!==undefined){
-    const raw=record(input.numberFormatByCell);numberFormatByCell={}
-    for(const [key,value] of Object.entries(raw)){if(!validKeys.has(key))throw new Error(`table.numberFormatByCell contains unknown cell ${key}`);numberFormatByCell[key]=parseImportedNumberFormat(value,`table.numberFormatByCell.${key}`)}
-    if(!Object.keys(numberFormatByCell).length)numberFormatByCell=undefined
-  }
-  let linkByCell:Record<string,ImportedCellLink>|undefined
-  if(input.linkByCell!==undefined){
-    const raw=record(input.linkByCell);linkByCell={}
-    for(const [key,value] of Object.entries(raw)){if(!validKeys.has(key))throw new Error(`table.linkByCell contains unknown cell ${key}`);linkByCell[key]=parseImportedCellLink(value,`table.linkByCell.${key}`)}
-    if(!Object.keys(linkByCell).length)linkByCell=undefined
-  }
-  const sourceVisibility=input.sourceVisibility===undefined?undefined:oneOf(input.sourceVisibility,'table.sourceVisibility',['visible','hidden','veryHidden'] as const)
-  const sourceDateSystem=input.sourceDateSystem===undefined?undefined:oneOf(input.sourceDateSystem,'table.sourceDateSystem',['1900','1904'] as const)
-  return{id:text(input.id,'table.id'),label:text(input.label,'table.label'),source:text(input.source,'table.source'),columns,rows,importedAt:text(input.importedAt,'table.importedAt'),...(formulaByCell?{formulaByCell}:{}),...(numberFormatByCell?{numberFormatByCell}:{}),...(linkByCell?{linkByCell}:{}),...(sourceVisibility?{sourceVisibility}:{}),...(sourceDateSystem?{sourceDateSystem}:{})}
 }
 function parseBlock(value: unknown): SemanticDocumentBlock {
   const input = record(value), id=text(input.id,'block.id'), type=oneOf(input.type,'block.type',['paragraph','claim','metric-embed','decision-embed'] as const)
@@ -99,6 +58,7 @@ export function parseWorkspaceCommand(value: unknown): VersionedWorkspaceCommand
     case'region.update':return{type,regionId:text(input.regionId,'regionId'),field:oneOf(input.field,'field',['region','revenue','growth','margin'] as const),value:typeof input.value==='string'?input.value:number(input.value,'value'),changedAt}
     case'plan.update':return{type,planId:text(input.planId,'planId'),field:oneOf(input.field,'field',['region','revenue'] as const),value:typeof input.value==='string'?input.value:number(input.value,'value'),changedAt}
     case'data.imported.replace':return{type,tables:array(input.tables,'tables').map(parseImportedDataTable),...timestamp(changedAt)}
+    case'review.workspace.replace':return{type,reviews:array(input.reviews,'reviews').map(parseWorkspaceReviewRecord),...timestamp(changedAt)}
     case'decision.status':return{type,decisionId:text(input.decisionId,'decisionId'),status:oneOf(input.status,'status',['approved','pending'] as const),changedAt}
     case'document.append':return{type,text:text(input.text,'text'),changedAt}
     case'document.update':return{type,field:oneOf(input.field,'field',['eyebrow','title','summary','body'] as const),value:text(input.value,'value'),changedAt}
