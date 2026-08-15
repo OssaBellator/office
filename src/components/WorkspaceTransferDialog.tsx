@@ -1,4 +1,4 @@
-import { Database, Download, FileText, Presentation, Table2, Upload, X } from 'lucide-react'
+import { Cloud, Database, Download, FileText, Presentation, Table2, Upload, X } from 'lucide-react'
 
 export type WorkspaceTransferMode = 'export' | 'import'
 
@@ -21,10 +21,12 @@ export function WorkspaceTransferDialog({
   onImportOffice: () => void
 }) {
   const exportMode = mode === 'export'
+  const openOfficeImport=()=>{if(typeof window==='undefined'){onImportOffice();return}window.location.assign('./office-import.html')}
+  const openGoogleDrive=()=>{if(typeof window!=='undefined')window.location.assign('./google-drive.html')}
   return <div className="transfer-backdrop" onMouseDown={onClose}>
     <section className="transfer-dialog" onMouseDown={(event) => event.stopPropagation()} aria-label={`${exportMode ? 'Export' : 'Import'} workspace`}>
       <header className="transfer-heading">
-        <div><span>{exportMode ? 'EXPORT' : 'IMPORT'}</span><h2>{exportMode ? 'Take Frame work anywhere' : 'Bring structured work into Frame'}</h2><p>{exportMode ? 'Frame stays semantic internally; compatibility projections produce portable Markdown/CSV or native Office OOXML when other tools need files.' : 'Imports validate structure first. Office, Google-export and CSV changes are previewed as semantic transactions before Apply.'}</p></div>
+        <div><span>{exportMode ? 'EXPORT' : 'IMPORT'}</span><h2>{exportMode ? 'Take Frame work anywhere' : 'Bring structured work into Frame'}</h2><p>{exportMode ? 'Frame stays semantic internally; compatibility projections produce portable Markdown/CSV or native Office OOXML when other tools need files.' : 'Imports validate structure first. Office, Google Drive and CSV changes are previewed as semantic transactions before Apply.'}</p></div>
         <button className="icon-button" onClick={onClose} aria-label="Close transfer dialog"><X size={16} /></button>
       </header>
       {exportMode ? <>
@@ -39,7 +41,8 @@ export function WorkspaceTransferDialog({
         <footer className="transfer-footer"><span>Frame JSON is the lossless backup. Office, Markdown and CSV are compatibility projections.</span><button className="primary-button" onClick={onExportAll}><Download size={14} /> Export portable set</button></footer>
       </> : <>
         <div className="transfer-grid import-grid">
-          <TransferAction icon={FileText} title="Word / PowerPoint / Excel" detail="Import DOCX, PPTX or XLSX. Google Docs, Slides and Sheets work through their DOCX, PPTX and XLSX downloads. Fidelity warnings appear before Apply." onClick={onImportOffice} action="Choose Office file" />
+          <TransferAction icon={FileText} title="Word / PowerPoint / Excel" detail="Securely inspect DOCX, PPTX or XLSX by package contents, reject macro/control payloads, preserve supported fidelity and preview every semantic change." onClick={openOfficeImport} action="Open Office import" />
+          <TransferAction icon={Cloud} title="Google Drive" detail="Connect read-only and import native Google Docs, Sheets or Slides through the same governed Office interoperability pipeline." onClick={openGoogleDrive} action="Open Drive" />
           <TransferAction icon={Database} title="Workspace backup" detail="Restore a full Frame JSON backup including semantic history." onClick={onImportBackup} action="Choose JSON" />
           <TransferAction icon={Table2} title="Actuals CSV" detail="Validate Region, Revenue, Growth and Margin; preview changed cells before Apply." onClick={onImportRegions} action="Choose CSV" />
           <TransferAction icon={Table2} title="Plan CSV" detail="Validate Region and Revenue; preview changed plan values before Apply." onClick={onImportPlan} action="Choose CSV" />
