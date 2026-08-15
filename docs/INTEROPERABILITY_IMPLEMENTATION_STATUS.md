@@ -22,9 +22,10 @@ The page calls the canonical `planSecureOfficeImport()` pipeline before governan
 6. XLSX number-format/date-system enrichment;
 7. XLSX hyperlink trust/provenance enrichment;
 8. XLSX classic cell-note/review enrichment;
-9. XLSX shared-formula expansion;
-10. source-aware re-import synchronization; and
-11. governed semantic preview and Apply.
+9. XLSX modern threaded-review enrichment;
+10. XLSX shared-formula expansion;
+11. source-aware re-import synchronization; and
+12. governed semantic preview and Apply.
 
 Applied imports persist into the same versioned semantic session as the main workspace.
 
@@ -32,7 +33,7 @@ Current local-file import preserves:
 
 - Word paragraphs/headings/lists, document tables and document-block source provenance;
 - PowerPoint relationship slide order, slide text, speaker notes, source provenance and flattened table rows;
-- Excel cached values, recognized finance mappings, arbitrary schemas, extra columns, booleans, hidden/very-hidden source-sheet state, formula text, number formats/date systems, worksheet hyperlinks and classic cell-note provenance;
+- Excel cached values, recognized finance mappings, arbitrary schemas, extra columns, booleans, hidden/very-hidden source-sheet state, formula text, number formats/date systems, worksheet hyperlinks, classic cell-note provenance, and structured modern review threads;
 - imported Data tables as editable/versioned/searchable/revertible Frame objects.
 
 ### Direct Google Drive import
@@ -68,11 +69,12 @@ The page runs `assessOfficeExport()` first and shows:
 - DOCX semantic block/claim/review counts;
 - PPTX visible-scene/speaker-note counts;
 - XLSX table, cached foreign-formula, boolean, number-format, hyperlink and hidden-sheet counts;
-- imported Excel review-note count;
+- imported Excel classic-note count;
+- imported Excel threaded-review count, total thread comments and open source-thread count;
 - source date-system mix;
 - date-like styles intentionally suppressed when mixed 1900/1904 workbooks would otherwise risk shifted serial dates;
 - unsafe hyperlink targets intentionally suppressed; and
-- classic Excel notes intentionally retained in Frame but omitted from the default XLSX projection.
+- classic notes and modern threaded reviews intentionally retained in Frame but omitted from the default XLSX projection.
 
 Users can then download DOCX, PPTX and XLSX individually or as a set.
 
@@ -127,14 +129,39 @@ They:
 
 The **default XLSX export omits classic notes** and tells the user how many will remain in Frame. An opt-in experimental classic-note XLSX writer, package validator and manual smoke-test path exist, but they are not the normal product export until validated in current Excel clients without repair prompts.
 
-Modern **threaded Excel comments** remain warning-only. Frame intentionally does not flatten replies/participants into a fake legacy note.
+### Modern Excel threaded review provenance
+
+Frame now imports modern Excel threaded comments as structured, read-only source review conversations rather than flattening them into legacy notes.
+
+For each retained cell thread Frame preserves:
+
+- stable comment IDs;
+- person IDs and resolved display names when the workbook Persons part is available;
+- root/reply structure through `parentId`;
+- source text;
+- source timestamps from `dT`;
+- source resolved/open state from `done`; and
+- mention IDs, participant identity and source character ranges.
+
+Replies that omit a cell reference inherit the root cell through their parent chain. Threads that cannot be attached to retained Data rows/columns produce an explicit warning rather than being silently relocated.
+
+Threaded source review:
+
+- shows a distinct Data-cell badge and source-order tooltip;
+- is searchable;
+- survives semantic command validation/serialization;
+- is version-diffed separately from the cell value;
+- appears in the unified Context review inbox with reply/participant/open-state context; and
+- remains read-only provenance and does not block review readiness until explicitly promoted into native Frame review work.
+
+The **default XLSX export omits threaded review parts** rather than flattening a discussion into a legacy note. Export preflight shows retained thread/comment/open-thread counts before download.
 
 ### Still not translated
 
 - fonts, fills, borders and alignment;
 - conditional formatting;
 - merged-cell geometry;
-- threaded Excel comment/reply structure;
+- threaded Excel review export back into modern threaded-comment OOXML;
 - external workbook/data connections.
 
 ## Word / Google Docs fidelity currently implemented
@@ -212,14 +239,17 @@ Generated DOCX/PPTX/XLSX packages round-trip through Frame's bounded ZIP reader/
 
 The experimental classic-note XLSX writer additionally round-trips through Frame's note parser/validator, but it has **not** been promoted to normal export because it has not yet been opened by this assistant in current installed Excel clients.
 
+Modern threaded-review **import** is based on Microsoft's published threaded-comment/Persons OOXML model and is regression-covered with package-shaped fixtures. Threaded-review **export** is intentionally not implemented yet; this avoids inventing or emitting collaborative metadata before it is validated against current Excel clients.
+
 More generally, generated Office files have not been opened by this assistant in a real installed Microsoft Word, PowerPoint or Excel instance in this environment. Do not claim pixel-perfect or repair-free Office validation until generated fixtures are manually opened in current Microsoft 365 / Google Workspace / LibreOffice clients.
 
 ## Next interoperability priorities
 
-1. Model modern threaded Excel comments and replies as real Frame review threads.
-2. Preserve selected cell presentation metadata (alignment/emphasis) only where it adds semantic meaning; do not recreate a formatting-first spreadsheet model.
-3. Represent Word comments/revisions as Frame review annotations/version events.
-4. Import embedded DOCX/PPTX media into reusable Frame media objects.
-5. Convert PowerPoint charts/tables into linked semantic chart/table objects.
-6. Expand the explicit reviewable translation layer for supported foreign Excel formulas into Frame formulas.
-7. Expand the real-world fixture corpus from current Microsoft 365 and Google Workspace exports and run it through `test:interop` plus manual application smoke tests.
+1. Add an explicit promotion workflow that converts selected imported source notes/threads into native Frame review work while preserving the immutable source review link.
+2. Validate and, if justified, implement modern threaded-review XLSX export without flattening conversations.
+3. Preserve selected cell presentation metadata (alignment/emphasis) only where it adds semantic meaning; do not recreate a formatting-first spreadsheet model.
+4. Represent Word comments/revisions as Frame review annotations/version events.
+5. Import embedded DOCX/PPTX media into reusable Frame media objects.
+6. Convert PowerPoint charts/tables into linked semantic chart/table objects.
+7. Expand the explicit reviewable translation layer for supported foreign Excel formulas into Frame formulas.
+8. Expand the real-world fixture corpus from current Microsoft 365 and Google Workspace exports and run it through `test:interop` plus manual application smoke tests.
