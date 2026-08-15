@@ -13,9 +13,9 @@ export type SourceReviewPromotion={
 
 function sourcePromotion(workspace:WorkspaceState,sourceItemId:string){
   const thread=getImportedThreadedReviewItems(workspace).find((item)=>item.id===sourceItemId)
-  if(thread)return{kind:'excel-thread' as const,tableId:thread.tableId,rowId:thread.rowId,columnId:thread.columnId,source:thread.source,sourceReviewId:thread.root.id,label:`${thread.tableLabel} · ${thread.columnLabel}`,body:thread.root.text}
+  if(thread)return{kind:'excel-thread' as const,tableId:thread.tableId,rowId:thread.rowId,columnId:thread.columnId,source:thread.source,sourceReviewId:thread.sourceReviewId,label:`${thread.tableLabel} · ${thread.columnLabel}`,body:thread.root.text}
   const note=getImportedDataReviewItems(workspace).find((item)=>item.id===sourceItemId)
-  if(note)return{kind:'excel-note' as const,tableId:note.tableId,rowId:note.rowId,columnId:note.columnId,source:note.source,sourceReviewId:note.id,label:`${note.tableLabel} · ${note.columnLabel}`,body:note.text}
+  if(note)return{kind:'excel-note' as const,tableId:note.tableId,rowId:note.rowId,columnId:note.columnId,source:note.source,sourceReviewId:note.sourceReviewId,label:`${note.tableLabel} · ${note.columnLabel}`,body:note.text}
   throw new Error(`Unknown imported source review: ${sourceItemId}`)
 }
 
