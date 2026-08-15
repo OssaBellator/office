@@ -3,6 +3,7 @@ import type { WorkspaceState } from './model.ts'
 
 export type ImportedThreadedReviewItem={
   id:string
+  sourceReviewId:string
   tableId:string
   tableLabel:string
   source:string
@@ -25,7 +26,7 @@ export function getImportedThreadedReviewItems(workspace:WorkspaceState):Importe
     const key=`${row.id}\u0000${column.id}`,thread=table.threadByCell?.[key]
     if(!thread?.comments.length)continue
     const root=rootComment(thread.comments),participants=[...new Set(thread.comments.map((comment)=>comment.author))]
-    items.push({id:`review-thread:${table.id}:${row.id}:${column.id}`,tableId:table.id,tableLabel:table.label,source:table.source,rowId:row.id,columnId:column.id,columnLabel:column.label,value:row.values[column.id]??null,root,comments:structuredClone(thread.comments),replyCount:Math.max(0,thread.comments.length-1),participants,resolved:root.done===true})
+    items.push({id:`review-thread:${table.id}:${row.id}:${column.id}`,sourceReviewId:root.id,tableId:table.id,tableLabel:table.label,source:table.source,rowId:row.id,columnId:column.id,columnLabel:column.label,value:row.values[column.id]??null,root,comments:structuredClone(thread.comments),replyCount:Math.max(0,thread.comments.length-1),participants,resolved:root.done===true})
   }
   return items
 }
