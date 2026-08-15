@@ -1,5 +1,6 @@
 import type { Metric } from './model.ts'
 import type { ImportedCellLink, ImportedDataTable, ImportedTableCell, ImportedNumberFormat } from './importedTables.ts'
+import { parseImportedDataTable } from './importedTableCodec.ts'
 import type { VersionedWorkspaceCommand } from './semanticCommands.ts'
 import type { BlockAnnotation, SemanticCitation, SemanticClaim, SemanticDocumentBlock, SemanticDocumentState, SemanticParagraphStyle } from './semanticDocument.ts'
 import type { ImportedPresentationScene, PresentationSceneId, PresentationState } from './presentationState.ts'
@@ -97,7 +98,7 @@ export function parseWorkspaceCommand(value: unknown): VersionedWorkspaceCommand
   switch(type){
     case'region.update':return{type,regionId:text(input.regionId,'regionId'),field:oneOf(input.field,'field',['region','revenue','growth','margin'] as const),value:typeof input.value==='string'?input.value:number(input.value,'value'),changedAt}
     case'plan.update':return{type,planId:text(input.planId,'planId'),field:oneOf(input.field,'field',['region','revenue'] as const),value:typeof input.value==='string'?input.value:number(input.value,'value'),changedAt}
-    case'data.imported.replace':return{type,tables:array(input.tables,'tables').map(parseImportedTable),...timestamp(changedAt)}
+    case'data.imported.replace':return{type,tables:array(input.tables,'tables').map(parseImportedDataTable),...timestamp(changedAt)}
     case'decision.status':return{type,decisionId:text(input.decisionId,'decisionId'),status:oneOf(input.status,'status',['approved','pending'] as const),changedAt}
     case'document.append':return{type,text:text(input.text,'text'),changedAt}
     case'document.update':return{type,field:oneOf(input.field,'field',['eyebrow','title','summary','body'] as const),value:text(input.value,'value'),changedAt}
