@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import { withImportedTables } from '../src/importedTables.ts'
 import { cloneSeedWorkspace } from '../src/model.ts'
 import { createStoredZip, exportWorkspaceDocx, exportWorkspacePptx, exportWorkspaceXlsx } from '../src/officeExport.ts'
 import { validateOfficePackage } from '../src/officePackageValidator.ts'
@@ -12,6 +13,16 @@ test('all Frame Office compatibility exports have complete OPC relationships and
     assert.equal(validation.partCount>3,true)
     assert.equal(validation.relationshipCount>0,true)
   }
+})
+
+test('styled XLSX export keeps styles.xml covered by content types and workbook relationships',async()=>{
+  let workspace=cloneSeedWorkspace()
+  workspace=withImportedTables(workspace,[{id:'table:dates',label:'Dates',source:'dates.xlsx',importedAt:'now',sourceDateSystem:'1904',columns:[{id:'date',label:'Date',type:'number'}],rows:[{id:'row:1',values:{date:45000}}],numberFormatByCell:{'row:1\u0000date':{numFmtId:165,formatCode:'yyyy-mm-dd'}}}])
+  const file=exportWorkspaceXlsx(workspace)
+  const validation=await validateOfficePackage(file.bytes)
+  assert.equal(validation.valid,true,validation.issues.map((issue)=>issue.detail).join('; '))
+  assert.equal(validation.issues.some((issue)=>/styles\.xml/.test(issue.detail)),false)
+  assert.equal(validation.relationshipCount>=4,true)
 })
 
 test('OPC validator reports missing relationship targets',async()=>{
