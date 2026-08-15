@@ -43,6 +43,25 @@ test('workspace review summary separates native open work, source notes and sour
   assert.equal(summary.importedThreads,1)
   assert.equal(summary.importedOpenThreads,1)
   assert.equal(summary.importedThreadComments,2)
+  assert.equal(summary.archivedNativeOpen,0)
   assert.deepEqual(summary.importedSources,['controls.xlsx','pipeline.xlsx'])
   assert.equal(summary.total,summary.nativeOpen+3)
+})
+
+test('review archives expose native work without duplicating copied source provenance in the inbox',()=>{
+  const workspace=withImportedTables(cloneSeedWorkspace(),[
+    {id:'table:archive',label:'Pipeline · review archive',source:'pipeline.xlsx',importedAt:'earlier',columns:[{id:'arr',label:'ARR',type:'number'}],rows:[{id:'row:old',values:{arr:2.4}}],commentByCell:{'row:old\u0000arr':{text:'Validate renewal',author:'Alice',sourceRef:'B2'}},threadByCell:{'row:old\u0000arr':sourceThread},promotedReviews:[{id:'frame-review:archive',objectId:'table:table:archive:row:old',label:'Pipeline · ARR',kind:'task',body:'Confirm renewal',owner:'Finance',status:'open',createdAt:'now',sourceReview:{kind:'excel-note',source:'pipeline.xlsx',tableId:'table:archive',rowId:'row:old',columnId:'arr',sourceReviewId:'excel-note:pipeline.xlsx:Pipeline:B2'}}]},
+    {id:'table:fresh',label:'Pipeline',source:'pipeline.xlsx',importedAt:'now',columns:[{id:'arr',label:'ARR',type:'number'}],rows:[{id:'row:new',values:{arr:2.4}}],commentByCell:{'row:new\u0000arr':{text:'Validate renewal',author:'Alice',sourceRef:'B3'}}},
+  ])
+  const inbox=listWorkspaceReviewInbox(workspace)
+  const native=inbox.find((item)=>item.id==='frame-review:archive')
+  assert.ok(native)
+  assert.equal(native.origin,'frame-data')
+  assert.equal(native.archived,true)
+  assert.equal(inbox.filter((item)=>item.origin==='imported-excel').length,1)
+  assert.equal(inbox.some((item)=>item.origin==='imported-excel-thread'),false)
+  const summary=summarizeWorkspaceReviewInbox(workspace)
+  assert.equal(summary.archivedNativeOpen,1)
+  assert.equal(summary.importedSourceNotes,1)
+  assert.equal(summary.importedThreads,0)
 })
