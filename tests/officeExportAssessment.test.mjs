@@ -4,9 +4,9 @@ import { withImportedTables } from '../src/importedTables.ts'
 import { cloneSeedWorkspace } from '../src/model.ts'
 import { assessOfficeExport } from '../src/officeExportAssessment.ts'
 
-test('Office export assessment counts preserved spreadsheet fidelity',()=>{
+test('Office export assessment counts preserved spreadsheet fidelity and native Data review',()=>{
   let workspace=cloneSeedWorkspace()
-  workspace=withImportedTables(workspace,[{id:'table:flags',label:'Flags',source:'model.xlsx',importedAt:'now',sourceVisibility:'hidden',sourceDateSystem:'1900',columns:[{id:'enabled',label:'Enabled',type:'boolean'},{id:'ratio',label:'Ratio',type:'number'}],rows:[{id:'row:1',values:{enabled:true,ratio:.42}}],formulaByCell:{'row:1\u0000ratio':'21/50'},numberFormatByCell:{'row:1\u0000ratio':{numFmtId:10}},linkByCell:{'row:1\u0000ratio':{kind:'external',target:'https://example.com/model'}},commentByCell:{'row:1\u0000ratio':{text:'Validate margin assumption',author:'Alice'}},threadByCell:{'row:1\u0000enabled':{comments:[{id:'thread:1',personId:'person:alice',author:'Alice',text:'Review control',done:false},{id:'thread:2',personId:'person:bob',author:'Bob',text:'Reviewed',parentId:'thread:1'}]}}}])
+  workspace=withImportedTables(workspace,[{id:'table:flags',label:'Flags',source:'model.xlsx',importedAt:'now',sourceVisibility:'hidden',sourceDateSystem:'1900',columns:[{id:'enabled',label:'Enabled',type:'boolean'},{id:'ratio',label:'Ratio',type:'number'}],rows:[{id:'row:1',values:{enabled:true,ratio:.42}}],formulaByCell:{'row:1\u0000ratio':'21/50'},numberFormatByCell:{'row:1\u0000ratio':{numFmtId:10}},linkByCell:{'row:1\u0000ratio':{kind:'external',target:'https://example.com/model'}},commentByCell:{'row:1\u0000ratio':{text:'Validate margin assumption',author:'Alice',sourceRef:'B2'}},threadByCell:{'row:1\u0000enabled':{comments:[{id:'thread:1',personId:'person:alice',author:'Alice',text:'Review control',done:false},{id:'thread:2',personId:'person:bob',author:'Bob',text:'Reviewed',parentId:'thread:1'}]}},promotedReviews:[{id:'frame-review:margin',objectId:'table:table:flags:row:1',label:'Flags · Ratio',kind:'task',body:'Validate margin assumption',owner:'Finance',status:'open',createdAt:'now',sourceReview:{kind:'excel-note',source:'model.xlsx',tableId:'table:flags',rowId:'row:1',columnId:'ratio',sourceReviewId:'excel-note:model.xlsx:Flags:B2'}}]}])
   const assessment=assessOfficeExport(workspace)
   assert.equal(assessment.xlsx.tables,3)
   assert.equal(assessment.xlsx.formulaCells,1)
@@ -18,12 +18,15 @@ test('Office export assessment counts preserved spreadsheet fidelity',()=>{
   assert.equal(assessment.xlsx.reviewThreadCells,1)
   assert.equal(assessment.xlsx.threadedComments,2)
   assert.equal(assessment.xlsx.openReviewThreads,1)
+  assert.equal(assessment.xlsx.promotedReviewItems,1)
+  assert.equal(assessment.xlsx.openPromotedReviews,1)
   assert.equal(assessment.xlsx.booleanCells,1)
   assert.equal(assessment.xlsx.hiddenTables,1)
   assert.equal(assessment.warnings.some((warning)=>/cached values only/.test(warning)),true)
   assert.equal(assessment.warnings.some((warning)=>/projected back into XLSX/.test(warning)),true)
   assert.equal(assessment.warnings.some((warning)=>/Frame review provenance/.test(warning)),true)
   assert.equal(assessment.warnings.some((warning)=>/omitted from the default XLSX projection rather than flattened into legacy notes/.test(warning)),true)
+  assert.equal(assessment.warnings.some((warning)=>/native Frame Data review/.test(warning)),true)
 })
 
 test('Office export assessment distinguishes inert external hyperlinks from exportable links',()=>{
