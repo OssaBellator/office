@@ -4,10 +4,13 @@ import test from 'node:test'
 
 async function source(path){return readFile(new URL(`../${path}`,import.meta.url),'utf8')}
 
-test('canonical Office interop pipeline enriches classic notes then threaded Excel review before shared formulas',async()=>{
+test('canonical Office interop pipeline enriches Word and Excel review provenance before synchronization',async()=>{
   const text=await source('src/officeInteropImport.ts')
+  assert.match(text,/preserveDocxCommentMetadata/)
+  assert.match(text,/const withWordComments=await preserveDocxCommentMetadata\(workspace,input,fileName,parsed\)/)
   assert.match(text,/preserveXlsxCommentMetadata/)
   assert.match(text,/preserveXlsxThreadedCommentMetadata/)
+  assert.match(text,/preserveXlsxSheetVisibility\(workspace,input,fileName,withWordComments\)/)
   assert.match(text,/const withComments=await preserveXlsxCommentMetadata\(workspace,input,fileName,withLinks\)/)
   assert.match(text,/const withThreads=await preserveXlsxThreadedCommentMetadata\(workspace,input,fileName,withComments\)/)
   assert.match(text,/preserveXlsxSharedFormulaMetadata\(input,fileName,withThreads\)/)
@@ -21,6 +24,25 @@ test('classic note provenance retains source-cell identity through parser and ru
   assert.match(codec,/sourceRef must be an A1 cell reference/)
   assert.match(review,/classicNoteSourceReviewId/)
   assert.match(review,/comment\.sourceRef/)
+})
+
+test('Word comments become source-only workspace review anchored to imported semantic blocks',async()=>{
+  const parser=await source('src/docxCommentImport.ts')
+  const codec=await source('src/workspaceReviewCodec.ts')
+  const reviews=await source('src/workspaceReviews.ts')
+  const inbox=await source('src/workspaceReviewInbox.ts')
+  const context=await source('src/components/ContextPanel.tsx')
+  const search=await source('src/searchIndex.ts')
+  assert.match(parser,/parseDocxComments/)
+  assert.match(parser,/parseDocxCommentParagraphAnchors/)
+  assert.match(parser,/sourceOnly:true/)
+  assert.match(parser,/kind:'word-comment'/)
+  assert.match(codec,/word-comment/)
+  assert.match(codec,/Source-only workspace reviews/)
+  assert.match(reviews,/if\(review\.sourceOnly\)return false/)
+  assert.match(inbox,/origin:'imported-word'/)
+  assert.match(context,/Word source comment/)
+  assert.match(search,/Source review/)
 })
 
 test('semantic history uses the review-aware workspace comparator',async()=>{
@@ -39,24 +61,26 @@ test('imported Data cells render source review and canonical native workspace re
   assert.match(text,/getImportedTableComment/)
   assert.match(text,/getImportedTableThread/)
   assert.match(text,/getWorkspaceReviews/)
+  assert.match(text,/sourceReview\.kind!=='word-comment'/)
   assert.match(text,/imported-note-badge/)
   assert.match(text,/imported-thread-badge/)
   assert.match(text,/imported-frame-review-badge/)
-  assert.match(text,/workspaceReviewIsOpen/)
   assert.match(text,/MessageSquareText/)
 })
 
-test('Office export preflight exposes source review and promoted native Data review counts',async()=>{
+test('Office export preflight exposes source review and native review counts without conflating Word provenance',async()=>{
   const assessment=await source('src/officeExportAssessment.ts')
   const page=await source('src/OfficeExportPage.tsx')
+  assert.match(assessment,/sourceReviewComments/)
   assert.match(assessment,/reviewNoteCells/)
   assert.match(assessment,/reviewThreadCells/)
   assert.match(assessment,/threadedComments/)
   assert.match(assessment,/promotedReviewItems/)
+  assert.match(assessment,/filter\(\(review\)=>!review\.sourceOnly\)/)
   assert.match(assessment,/rather than flattened into legacy notes/)
+  assert.match(page,/Word source comments/)
   assert.match(page,/Legacy review notes/)
   assert.match(page,/Source review threads/)
-  assert.match(page,/Native Data reviews/)
   assert.match(page,/assessment\.xlsx\.promotedReviewItems/)
 })
 
@@ -72,10 +96,10 @@ test('canonical native review storage is workspace-level while table-owned promo
   assert.match(commandCodec,/parseWorkspaceReviewRecord/)
   assert.match(semanticCommands,/case 'review\.workspace\.replace'/)
   assert.match(tableCodec,/promotedReviews/)
-  assert.match(tableCodec,/parseWorkspaceReviewRecord/)
+  assert.match(tableCodec,/cannot store Word provenance/)
 })
 
-test('unified Context review inbox opens a configurable promotion editor for source provenance',async()=>{
+test('unified Context review inbox opens a configurable promotion editor for Excel source provenance',async()=>{
   const inbox=await source('src/workspaceReviewInbox.ts')
   const context=await source('src/components/ContextPanel.tsx')
   const editor=await source('src/components/ReviewPromotionDialog.tsx')
