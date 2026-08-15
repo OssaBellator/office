@@ -1,12 +1,13 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { deserializeWorkspaceCommand, serializeWorkspaceCommand } from '../src/commandCodec.ts'
-import { getImportedTables, importedTableFromSheet, withImportedTables } from '../src/importedTables.ts'
+import { importedTableFromSheet, withImportedTables } from '../src/importedTables.ts'
 import { cloneSeedWorkspace } from '../src/model.ts'
 import { createStoredZip, exportWorkspaceXlsx } from '../src/officeExport.ts'
 import { planSecureOfficeImport } from '../src/officeSecureImport.ts'
 import { readOfficeXml, readOfficeZip } from '../src/officeArchive.ts'
 import { parseXlsxWorkbook } from '../src/officeParsers.ts'
+import { compareWorkspaceStates } from '../src/workspaceCompare.ts'
 
 function workbookPackage({state='visible',body}){
   return createStoredZip({
@@ -16,6 +17,10 @@ function workbookPackage({state='visible',body}){
     'xl/_rels/workbook.xml.rels':'<Relationships><Relationship Id="rId1" Target="worksheets/sheet1.xml"/></Relationships>',
     'xl/worksheets/sheet1.xml':`<worksheet><sheetData>${body}</sheetData></worksheet>`,
   })
+}
+
+function flagTable(enabled,sourceVisibility='visible'){
+  return{id:'imported:flags',label:'Flags',source:'flags.xlsx',importedAt:'today',sourceVisibility,columns:[{id:'enabled',label:'Enabled',type:'boolean'}],rows:[{id:'row:1',values:{enabled}}]}
 }
 
 test('XLSX parser returns real booleans and workbook sheet visibility',()=>{
@@ -33,9 +38,19 @@ test('XLSX parser returns real booleans and workbook sheet visibility',()=>{
 })
 
 test('boolean and sheet-visibility metadata survives semantic command decoding',()=>{
-  const table={id:'imported:flags',label:'Flags',source:'flags.xlsx',importedAt:'today',sourceVisibility:'hidden',columns:[{id:'enabled',label:'Enabled',type:'boolean'}],rows:[{id:'row:1',values:{enabled:true}},{id:'row:2',values:{enabled:false}}]}
+  const table={...flagTable(true,'hidden'),rows:[{id:'row:1',values:{enabled:true}},{id:'row:2',values:{enabled:false}}]}
   const command={type:'data.imported.replace',tables:[table]}
   assert.deepEqual(deserializeWorkspaceCommand(serializeWorkspaceCommand(command)),command)
+})
+
+test('semantic comparison reports boolean cell and source-visibility changes separately',()=>{
+  const before=withImportedTables(cloneSeedWorkspace(),[flagTable(false,'visible')])
+  const after=withImportedTables(cloneSeedWorkspace(),[flagTable(true,'hidden')])
+  const diffs=compareWorkspaceStates(before,after)
+  const booleanDiff=diffs.find((diff)=>diff.objectId==='table:imported:flags:row:1'&&diff.field==='Enabled')
+  assert.deepEqual({before:booleanDiff.before,after:booleanDiff.after},{before:false,after:true})
+  const visibility=diffs.find((diff)=>diff.objectId==='table:imported:flags'&&diff.field==='sourceVisibility')
+  assert.deepEqual({before:visibility.before,after:visibility.after},{before:'visible',after:'hidden'})
 })
 
 test('Frame XLSX export re-emits imported booleans as boolean cells and source visibility as sheet state',async()=>{
