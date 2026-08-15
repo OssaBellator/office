@@ -23,7 +23,7 @@ function promotedReviewId(sourceReviewId:string){return`frame-review:${sourceRev
 
 export function findPromotedSourceReview(workspace:WorkspaceState,sourceItemId:string){
   const source=sourcePromotion(workspace,sourceItemId)
-  return getWorkspaceReviews(workspace).find((review)=>review.sourceReview?.source===source.source&&review.sourceReview.sourceReviewId===source.sourceReviewId)
+  return getWorkspaceReviews(workspace).find((review)=>!review.sourceOnly&&review.sourceReview?.source===source.source&&review.sourceReview.sourceReviewId===source.sourceReviewId)
 }
 
 export function planPromoteSourceReview(
@@ -57,6 +57,7 @@ export function planPromoteSourceReview(
 export function planWorkspaceReviewStatusUpdate(workspace:WorkspaceState,reviewId:string,status:WorkspaceReviewStatus):Extract<VersionedWorkspaceCommand,{type:'review.workspace.replace'}>{
   const reviews=getWorkspaceReviews(workspace),review=reviews.find((item)=>item.id===reviewId)
   if(!review)throw new Error(`Unknown promoted workspace review: ${reviewId}`)
+  if(review.sourceOnly)throw new Error('Imported source review provenance is read-only until promoted to native Frame review work')
   const allowed=review.kind==='approval'?['pending','approved']:['open','resolved'];if(!allowed.includes(status))throw new Error(`${review.kind} review cannot use status ${status}`)
   return{type:'review.workspace.replace',reviews:reviews.map((item)=>item.id===reviewId?{...item,status}:item)}
 }
