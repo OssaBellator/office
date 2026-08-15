@@ -7,25 +7,28 @@ import { getPresentationState, withPresentationState } from '../src/presentation
 import { getSemanticDocument, withSemanticDocument } from '../src/semanticDocument.ts'
 
 test('interop warnings are grouped by fidelity concern',()=>{
-  const groups=groupInteropWarnings(['Embedded images are not imported','PowerPoint theme geometry changes','Excel formula text is preserved','Tracked revisions are flattened','Actuals: source worksheet is hidden'])
-  assert.deepEqual(Object.fromEntries(groups.map((group)=>[group.kind,group.count])),{media:1,layout:1,formula:1,review:1,visibility:1})
+  const groups=groupInteropWarnings(['Embedded images are not imported','PowerPoint theme geometry changes','Excel formula text is preserved','Tracked revisions are flattened','Actuals: source worksheet is hidden','Workbook uses Excel\'s 1904 date system'])
+  assert.deepEqual(Object.fromEntries(groups.map((group)=>[group.kind,group.count])),{media:1,layout:1,formula:1,review:1,visibility:1,formatting:1})
 })
 
 test('Office import report summarizes command mix and preserved semantic content',()=>{
-  const plan={kind:'xlsx',label:'model.xlsx',importedItems:2,warnings:['Excel formula text is preserved','Sheet: source worksheet is hidden'],commands:[
+  const plan={kind:'xlsx',label:'model.xlsx',importedItems:2,warnings:['Excel formula text is preserved','Sheet: source worksheet is hidden','Workbook uses Excel\'s 1904 date system'],commands:[
     {type:'region.update',regionId:'apac',field:'revenue',value:10},
-    {type:'data.imported.replace',tables:[{id:'table:x',label:'Sheet',source:'model.xlsx',importedAt:'now',sourceVisibility:'hidden',columns:[{id:'value',label:'Value',type:'number'},{id:'enabled',label:'Enabled',type:'boolean'}],rows:[{id:'row:1',values:{value:10,enabled:true}},{id:'row:2',values:{value:9,enabled:false}}],formulaByCell:{'row:1\u0000value':'5+5'}}]},
+    {type:'data.imported.replace',tables:[{id:'table:x',label:'Sheet',source:'model.xlsx',importedAt:'now',sourceVisibility:'hidden',sourceDateSystem:'1904',columns:[{id:'value',label:'Value',type:'number'},{id:'enabled',label:'Enabled',type:'boolean'}],rows:[{id:'row:1',values:{value:10,enabled:true}},{id:'row:2',values:{value:9,enabled:false}}],formulaByCell:{'row:1\u0000value':'5+5'},numberFormatByCell:{'row:1\u0000value':{numFmtId:165,formatCode:'0.00'}}}]},
   ]}
   const report=summarizeOfficeImportPlan(plan)
   assert.equal(report.commandCount,2)
   assert.equal(report.commandTypes['region.update'],1)
   assert.equal(report.preserved.tables,1)
   assert.equal(report.preserved.formulaCells,1)
+  assert.equal(report.preserved.formattedCells,1)
   assert.equal(report.preserved.booleanCells,2)
   assert.equal(report.preserved.hiddenTables,1)
   assert.equal(report.preserved.veryHiddenTables,0)
+  assert.equal(report.preserved.date1904Tables,1)
   assert.equal(report.warningGroups.some((group)=>group.kind==='formula'),true)
   assert.equal(report.warningGroups.some((group)=>group.kind==='visibility'),true)
+  assert.equal(report.warningGroups.some((group)=>group.kind==='formatting'),true)
 })
 
 test('workspace interop state reports imported provenance across Docs Data and Present',()=>{
@@ -34,7 +37,7 @@ test('workspace interop state reports imported provenance across Docs Data and P
   semantic.blocks.push({id:'block:interop',type:'paragraph',text:'Imported',source:'strategy.docx'})
   workspace=withSemanticDocument(workspace,semantic)
   workspace=withImportedTables(workspace,[
-    {id:'table:interop',label:'Pipeline',source:'model.xlsx',importedAt:'now',sourceVisibility:'veryHidden',columns:[{id:'arr',label:'ARR',type:'number'},{id:'active',label:'Active',type:'boolean'}],rows:[{id:'row:1',values:{arr:2.4,active:true}}],formulaByCell:{'row:1\u0000arr':'1.2+1.2'}},
+    {id:'table:interop',label:'Pipeline',source:'model.xlsx',importedAt:'now',sourceVisibility:'veryHidden',sourceDateSystem:'1904',columns:[{id:'arr',label:'ARR',type:'number'},{id:'active',label:'Active',type:'boolean'}],rows:[{id:'row:1',values:{arr:2.4,active:true}}],formulaByCell:{'row:1\u0000arr':'1.2+1.2'},numberFormatByCell:{'row:1\u0000arr':{numFmtId:4}}},
   ])
   const presentation=getPresentationState(workspace)
   workspace=withPresentationState(workspace,{...presentation,importedScenes:[{id:'imported:interop',title:'Imported slide',body:[],source:'board.pptx · imported from PowerPoint / Google Slides export'}],order:[...presentation.order,'imported:interop']})
@@ -42,9 +45,11 @@ test('workspace interop state reports imported provenance across Docs Data and P
   assert.deepEqual(state.importedDocumentSources,['strategy.docx'])
   assert.deepEqual(state.importedTableSources,['model.xlsx'])
   assert.equal(state.preservedFormulaCells,1)
+  assert.equal(state.preservedNumberFormatCells,1)
   assert.equal(state.preservedBooleanCells,1)
   assert.equal(state.hiddenImportedTables,0)
   assert.equal(state.veryHiddenImportedTables,1)
+  assert.equal(state.imported1904DateSystemTables,1)
   assert.equal(state.importedScenes,1)
   assert.equal(state.importedSceneSources[0].startsWith('board.pptx'),true)
 })
