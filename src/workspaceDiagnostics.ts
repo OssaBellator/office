@@ -3,6 +3,7 @@ import { evaluateMetric, type WorkspaceState } from './model.ts'
 import { getPresentationState } from './presentationState.ts'
 import { inspectAllRelationships } from './relationshipDiagnostics.ts'
 import { getSemanticDocument, resolveSemanticClaim } from './semanticDocument.ts'
+import { getWorkspaceReviews } from './workspaceReviews.ts'
 
 export type DiagnosticSeverity = 'error' | 'warning' | 'info'
 export type DiagnosticArea = 'claims' | 'reviews' | 'sources' | 'data' | 'relationships' | 'charts' | 'graph' | 'presentation'
@@ -47,6 +48,12 @@ export function buildWorkspaceDiagnostics(workspace: WorkspaceState): WorkspaceD
     if (annotation.kind === 'task' && annotation.status !== 'resolved') diagnostics.push(diagnostic(`task-open:${annotation.id}`, 'info', 'reviews', `Open task for ${annotation.owner}: ${annotation.body}`, [annotation.id, annotation.blockId]))
     if (annotation.kind === 'comment' && annotation.status !== 'resolved') diagnostics.push(diagnostic(`comment-open:${annotation.id}`, 'info', 'reviews', `Unresolved comment: ${annotation.body}`, [annotation.id, annotation.blockId]))
   }
+  for (const review of getWorkspaceReviews(workspace)) {
+    const sourceLabel=review.sourceReview?` · promoted from ${review.sourceReview.source}`:''
+    if (review.kind === 'approval' && review.status !== 'approved') diagnostics.push(diagnostic(`workspace-review-approval:${review.id}`, 'warning', 'reviews', `Approval pending on ${review.label}: ${review.body}${sourceLabel}`, [review.id, review.objectId]))
+    if (review.kind === 'task' && review.status !== 'resolved') diagnostics.push(diagnostic(`workspace-review-task:${review.id}`, 'info', 'reviews', `Open task on ${review.label} for ${review.owner}: ${review.body}${sourceLabel}`, [review.id, review.objectId]))
+    if (review.kind === 'comment' && review.status !== 'resolved') diagnostics.push(diagnostic(`workspace-review-comment:${review.id}`, 'info', 'reviews', `Unresolved comment on ${review.label}: ${review.body}${sourceLabel}`, [review.id, review.objectId]))
+  }
 
   for (const metric of workspace.metrics) {
     if (!metric.formula) continue
@@ -80,8 +87,9 @@ export function buildWorkspaceDiagnostics(workspace: WorkspaceState): WorkspaceD
 export function assessWorkspaceReadiness(workspace: WorkspaceState): WorkspaceReadiness {
   const diagnostics = buildWorkspaceDiagnostics(workspace)
   const semantic = getSemanticDocument(workspace)
-  const openApprovals = semantic.annotations.filter((annotation) => annotation.kind === 'approval' && annotation.status !== 'approved').length
-  const openTasks = semantic.annotations.filter((annotation) => annotation.kind === 'task' && annotation.status !== 'resolved').length
+  const crossSurfaceReviews=getWorkspaceReviews(workspace)
+  const openApprovals = semantic.annotations.filter((annotation) => annotation.kind === 'approval' && annotation.status !== 'approved').length + crossSurfaceReviews.filter((review)=>review.kind==='approval'&&review.status!=='approved').length
+  const openTasks = semantic.annotations.filter((annotation) => annotation.kind === 'task' && annotation.status !== 'resolved').length + crossSurfaceReviews.filter((review)=>review.kind==='task'&&review.status!=='resolved').length
   const errors = diagnostics.filter((item) => item.severity === 'error').length
   const warnings = diagnostics.filter((item) => item.severity === 'warning').length
   return {
