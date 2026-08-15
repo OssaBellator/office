@@ -5,6 +5,7 @@ import { parseDocxCommentParagraphAnchors, parseDocxComments } from '../src/docx
 import { cloneSeedWorkspace } from '../src/model.ts'
 import { createStoredZip } from '../src/officeExport.ts'
 import { planSecureOfficeImport } from '../src/officeSecureImport.ts'
+import { planPromoteSourceReview } from '../src/reviewPromotion.ts'
 import { searchWorkspace } from '../src/searchIndex.ts'
 import { createVersionedWorkspaceSession, executeVersionedWorkspaceCommand } from '../src/versioning.ts'
 import { assessWorkspaceReadiness, buildWorkspaceDiagnostics } from '../src/workspaceDiagnostics.ts'
@@ -14,16 +15,17 @@ import { getWorkspaceReviews } from '../src/workspaceReviews.ts'
 function documentXml(secondCommentText='Next step'){
   return`<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body><w:p><w:r><w:t>Opening context</w:t></w:r></w:p><w:p><w:commentRangeStart w:id="7"/><w:r><w:t>Revenue grew 17%.</w:t></w:r><w:commentRangeEnd w:id="7"/><w:r><w:commentReference w:id="7"/></w:r></w:p><w:p><w:r><w:t>${secondCommentText}</w:t></w:r><w:r><w:commentReference w:id="8"/></w:r></w:p></w:body></w:document>`
 }
-function commentsXml(second='Clarify the next owner'){
-  return`<w:comments xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:comment w:id="7" w:author="Alice Chen" w:initials="AC" w:date="2026-08-15T03:00:00Z"><w:p><w:r><w:t>Confirm revenue with Finance.</w:t></w:r></w:p><w:p><w:r><w:t>Use the board-approved figure.</w:t></w:r></w:p></w:comment><w:comment w:id="8" w:author="Bob Singh"><w:p><w:r><w:t>${second}</w:t></w:r></w:p></w:comment></w:comments>`
+function commentsXml(second='Clarify the next owner',includeRevenue=true){
+  const revenue=includeRevenue?'<w:comment w:id="7" w:author="Alice Chen" w:initials="AC" w:date="2026-08-15T03:00:00Z"><w:p><w:r><w:t>Confirm revenue with Finance.</w:t></w:r></w:p><w:p><w:r><w:t>Use the board-approved figure.</w:t></w:r></w:p></w:comment>':''
+  return`<w:comments xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">${revenue}<w:comment w:id="8" w:author="Bob Singh"><w:p><w:r><w:t>${second}</w:t></w:r></w:p></w:comment></w:comments>`
 }
-function docx({secondComment='Clarify the next owner',extended=true}={}){
+function docx({secondComment='Clarify the next owner',extended=true,includeRevenue=true}={}){
   const files={
     '[Content_Types].xml':'<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/><Override PartName="/word/comments.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.comments+xml"/></Types>',
     '_rels/.rels':'<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>',
     'word/document.xml':documentXml(),
     'word/_rels/document.xml.rels':'<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rIdComments" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/comments" Target="comments.xml"/></Relationships>',
-    'word/comments.xml':commentsXml(secondComment),
+    'word/comments.xml':commentsXml(secondComment,includeRevenue),
   }
   if(extended)files['word/commentsExtended.xml']='<w15:commentsEx xmlns:w15="http://schemas.microsoft.com/office/word/2012/wordml"/>'
   return createStoredZip(files)
@@ -93,4 +95,47 @@ test('DOCX re-import replaces prior source comments with newly anchored records 
 
   const refreshed=apply(imported,second.commands)
   assert.equal(getWorkspaceReviews(refreshed).filter((review)=>review.sourceOnly&&review.sourceReview?.kind==='word-comment').length,2)
+})
+
+test('promoted Word review remaps by source comment id and detaches safely if source comment disappears',async()=>{
+  const base=cloneSeedWorkspace(),first=await planSecureOfficeImport(base,docx({extended:false}),'strategy.docx')
+  let workspace=apply(base,first.commands)
+  const source=listWorkspaceReviewInbox(workspace).find((item)=>item.origin==='imported-word'&&item.owner==='Alice Chen')
+  assert.ok(source)
+  const promotion=planPromoteSourceReview(workspace,source.id,{owner:'Finance',body:'Validate the board revenue figure',createdAt:'now'})
+  workspace=apply(workspace,[promotion.command])
+  let native=getWorkspaceReviews(workspace).find((review)=>review.id===promotion.review.id)
+  assert.ok(native)
+  assert.equal(native.sourceOnly,undefined)
+  assert.equal(native.sourceReview.kind,'word-comment')
+  assert.equal(native.body,'Validate the board revenue figure')
+  assert.equal(listWorkspaceReviewInbox(workspace).find((item)=>item.id===source.id).promotedReviewId,native.id)
+
+  const sameSource=await planSecureOfficeImport(workspace,docx({extended:false}),'strategy.docx')
+  const sameReviewCommand=sameSource.commands.find((command)=>command.type==='review.workspace.replace')
+  native=sameReviewCommand.reviews.find((review)=>review.id===promotion.review.id)
+  const refreshedSource=sameReviewCommand.reviews.find((review)=>review.sourceOnly&&review.sourceReview?.sourceReviewId==='word-comment:strategy.docx:7')
+  assert.ok(native);assert.ok(refreshedSource)
+  assert.equal(native.objectId,refreshedSource.objectId)
+  assert.equal(native.sourceReview.blockId,refreshedSource.sourceReview.blockId)
+  assert.equal(native.sourceDetached,undefined)
+  assert.equal(sameSource.warnings.some((warning)=>/remapped to refreshed Word comment anchors/.test(warning)),true)
+  workspace=apply(workspace,sameSource.commands)
+
+  const removedSource=await planSecureOfficeImport(workspace,docx({extended:false,includeRevenue:false}),'strategy.docx')
+  const removedReviewCommand=removedSource.commands.find((command)=>command.type==='review.workspace.replace')
+  native=removedReviewCommand.reviews.find((review)=>review.id===promotion.review.id)
+  assert.ok(native)
+  assert.equal(native.objectId,'document:strategy')
+  assert.equal(native.sourceDetached,true)
+  assert.equal(native.body,'Validate the board revenue figure')
+  assert.equal(native.owner,'Finance')
+  assert.equal(removedReviewCommand.reviews.some((review)=>review.sourceOnly&&review.sourceReview?.sourceReviewId==='word-comment:strategy.docx:7'),false)
+  assert.equal(removedSource.warnings.some((warning)=>/detached to the Strategy document/.test(warning)),true)
+  const detached=apply(workspace,removedSource.commands)
+  const detachedInbox=listWorkspaceReviewInbox(detached).find((item)=>item.id===promotion.review.id)
+  assert.ok(detachedInbox)
+  assert.equal(detachedInbox.origin,'frame-data')
+  assert.equal(detachedInbox.detached,true)
+  assert.equal(detachedInbox.relinkable,false)
 })
