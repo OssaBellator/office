@@ -2,6 +2,7 @@ import { formatMetric, type Surface, type WorkspaceState } from './model.ts'
 import { getImportedTables } from './importedTables.ts'
 import { buildAllPresentationScenes } from './presentationModel.ts'
 import { getSemanticDocument, resolveSemanticClaim } from './semanticDocument.ts'
+import { getWorkspaceReviews } from './workspaceReviews.ts'
 
 export type SearchObjectKind = 'document'|'block'|'claim'|'citation'|'metric'|'region'|'plan'|'table'|'decision'|'chart'|'relationship'|'source'|'scene'|'review'
 export type WorkspaceSearchRecord = {
@@ -20,6 +21,11 @@ function numberFormatText(table:ReturnType<typeof getImportedTables>[number]){re
 function hyperlinkText(table:ReturnType<typeof getImportedTables>[number]){return Object.values(table.linkByCell??{}).map((link)=>`${link.kind} hyperlink ${link.target} ${link.display??''} ${link.tooltip??''}`).join(' ')}
 function commentText(table:ReturnType<typeof getImportedTables>[number]){return Object.values(table.commentByCell??{}).map((comment)=>`cell note ${comment.author??''} ${comment.text}`).join(' ')}
 function threadedReviewText(table:ReturnType<typeof getImportedTables>[number]){return Object.values(table.threadByCell??{}).flatMap((thread)=>thread.comments).map((comment)=>`threaded review ${comment.author} ${comment.text} ${comment.createdAt??''} ${comment.done?'resolved':'open'} ${(comment.mentions??[]).map((mention)=>mention.displayName??mention.personId).join(' ')}`).join(' ')}
+function reviewSurfaces(review:ReturnType<typeof getWorkspaceReviews>[number]):Surface[]{
+  if(review.sourceReview?.kind==='word-comment')return['docs']
+  if(review.sourceReview?.kind==='excel-note'||review.sourceReview?.kind==='excel-thread')return['data']
+  return['docs','data','present']
+}
 
 export function buildWorkspaceSearchIndex(workspace: WorkspaceState): WorkspaceSearchRecord[] {
   const semantic = getSemanticDocument(workspace)
@@ -37,6 +43,7 @@ export function buildWorkspaceSearchIndex(workspace: WorkspaceState): WorkspaceS
   }
   for (const citation of semantic.citations) records.push(record(citation.id,'citation',citation.label,`${citation.locator} ${citation.sourceId} ${citation.evidenceObjectId}`,['docs']))
   for (const annotation of semantic.annotations) records.push(record(annotation.id,'review',`${annotation.kind} · ${annotation.owner}`,`${annotation.body} ${annotation.status} ${annotation.blockId}`,['docs']))
+  for (const review of getWorkspaceReviews(workspace)) records.push(record(review.id,'review',review.sourceOnly?`Source review · ${review.owner}`:`${review.kind} · ${review.owner}`,`${review.body} ${review.status} ${review.label} ${review.sourceReview?.source??''} ${review.sourceReview?.sourceReviewId??''}`,reviewSurfaces(review)))
   for (const metric of workspace.metrics) records.push(record(`metric:${metric.id}`,'metric',metric.label,`${formatMetric(metric)} ${metric.formula ?? ''} ${metric.source}`,['data','docs','present']))
   for (const row of workspace.regions) records.push(record(`region:${row.id}`,'region',row.region,`revenue ${row.revenue} growth ${row.growth}% margin ${row.margin}%`,['data']))
   for (const row of workspace.plans) records.push(record(`plan:${row.id}`,'plan',`${row.region} plan`,`revenue ${row.revenue}`,['data']))
