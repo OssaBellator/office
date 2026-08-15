@@ -1,0 +1,29 @@
+import assert from 'node:assert/strict'
+import test from 'node:test'
+import { withImportedTables } from '../src/importedTables.ts'
+import { cloneSeedWorkspace } from '../src/model.ts'
+import { assessOfficeExport } from '../src/officeExportAssessment.ts'
+
+test('Office export assessment counts preserved spreadsheet fidelity',()=>{
+  let workspace=cloneSeedWorkspace()
+  workspace=withImportedTables(workspace,[{id:'table:flags',label:'Flags',source:'model.xlsx',importedAt:'now',sourceVisibility:'hidden',sourceDateSystem:'1900',columns:[{id:'enabled',label:'Enabled',type:'boolean'},{id:'ratio',label:'Ratio',type:'number'}],rows:[{id:'row:1',values:{enabled:true,ratio:.42}}],formulaByCell:{'row:1\u0000ratio':'21/50'},numberFormatByCell:{'row:1\u0000ratio':{numFmtId:10}}}])
+  const assessment=assessOfficeExport(workspace)
+  assert.equal(assessment.xlsx.tables,3)
+  assert.equal(assessment.xlsx.formulaCells,1)
+  assert.equal(assessment.xlsx.numberFormatCells,1)
+  assert.equal(assessment.xlsx.booleanCells,1)
+  assert.equal(assessment.xlsx.hiddenTables,1)
+  assert.equal(assessment.warnings.some((warning)=>/cached values only/.test(warning)),true)
+})
+
+test('Office export assessment flags date-like formats suppressed across mixed date systems',()=>{
+  let workspace=cloneSeedWorkspace()
+  workspace=withImportedTables(workspace,[
+    {id:'table:mac',label:'Mac',source:'mac.xlsx',importedAt:'now',sourceDateSystem:'1904',columns:[{id:'date',label:'Date',type:'number'}],rows:[{id:'mac:1',values:{date:45000}}],numberFormatByCell:{'mac:1\u0000date':{numFmtId:165,formatCode:'yyyy-mm-dd'}}},
+    {id:'table:win',label:'Win',source:'win.xlsx',importedAt:'now',sourceDateSystem:'1900',columns:[{id:'date',label:'Date',type:'number'}],rows:[{id:'win:1',values:{date:45000}}],numberFormatByCell:{'win:1\u0000date':{numFmtId:14}}},
+  ])
+  const assessment=assessOfficeExport(workspace)
+  assert.deepEqual(assessment.xlsx.sourceDateSystems,['1900','1904'])
+  assert.equal(assessment.xlsx.suppressedDateLikeFormatCells,1)
+  assert.equal(assessment.warnings.some((warning)=>/intentionally omitted/.test(warning)),true)
+})
