@@ -3,7 +3,7 @@ import { getImportedTables, type ImportedDataTable } from './importedTables.ts'
 import { tableThreadedReviewItems } from './importedThreadedReview.ts'
 import type { WorkspaceState } from './model.ts'
 import type { VersionedWorkspaceCommand } from './semanticCommands.ts'
-import { getWorkspaceReviews, type WorkspaceReviewRecord, type WorkspaceReviewSource } from './workspaceReviews.ts'
+import { getWorkspaceReviews, type ExcelWorkspaceReviewSource, type WorkspaceReviewRecord } from './workspaceReviews.ts'
 
 export type ReviewRelinkCandidate={
   id:string
@@ -31,7 +31,7 @@ export type ReviewRelinkPlan={
   command:Extract<VersionedWorkspaceCommand,{type:'review.workspace.replace'}>
 }
 
-type LocatedReview={table:ImportedDataTable|undefined;review:WorkspaceReviewRecord}
+type LocatedReview={table:ImportedDataTable|undefined;review:WorkspaceReviewRecord;sourceReview:ExcelWorkspaceReviewSource}
 type SourceDescriptor={kind:'excel-note'|'excel-thread';body:string;author:string;columnLabel:string;tableLabel:string;sourceReviewId:string}
 
 export function isReviewArchiveTable(table:ImportedDataTable){return table.label.endsWith(' · review archive')}
@@ -40,11 +40,14 @@ function baseTableLabel(label:string){return label.replace(/ · review archive$/
 function locateReview(workspace:WorkspaceState,reviewId:string):LocatedReview{
   const review=getWorkspaceReviews(workspace).find((item)=>item.id===reviewId)
   if(!review)throw new Error(`Unknown promoted Frame review: ${reviewId}`)
-  const table=review.sourceReview?getImportedTables(workspace).find((candidate)=>candidate.id===review.sourceReview!.tableId):undefined
-  return{table,review}
+  const sourceReview=review.sourceReview
+  if(!sourceReview)throw new Error(`Frame review ${reviewId} has no imported source review to relink`)
+  if(sourceReview.kind==='word-comment')throw new Error('Word source comments do not use the spreadsheet review relink workflow')
+  const table=getImportedTables(workspace).find((candidate)=>candidate.id===sourceReview.tableId)
+  return{table,review,sourceReview}
 }
 
-function sourceDescriptor(table:ImportedDataTable|undefined,sourceReview:WorkspaceReviewSource):SourceDescriptor|null{
+function sourceDescriptor(table:ImportedDataTable|undefined,sourceReview:ExcelWorkspaceReviewSource):SourceDescriptor|null{
   if(!table)return null
   if(sourceReview.kind==='excel-note'){
     const item=tableReviewItems(table).find((candidate)=>candidate.rowId===sourceReview.rowId&&candidate.columnId===sourceReview.columnId)
@@ -68,15 +71,14 @@ function candidateScore(candidate:Omit<ReviewRelinkCandidate,'score'|'matchHints
 function occupiedSourceKeys(workspace:WorkspaceState,exceptReviewId:string){
   const keys=new Set<string>()
   for(const review of getWorkspaceReviews(workspace)){
-    if(review.id===exceptReviewId||!review.sourceReview)continue
+    if(review.id===exceptReviewId||!review.sourceReview||review.sourceOnly)continue
     keys.add(`${review.sourceReview.source}|${review.sourceReview.sourceReviewId}`)
   }
   return keys
 }
 
 export function listReviewRelinkCandidates(workspace:WorkspaceState,reviewId:string):ReviewRelinkCandidate[]{
-  const located=locateReview(workspace,reviewId),sourceReview=located.review.sourceReview
-  if(!sourceReview)throw new Error(`Frame review ${reviewId} has no imported source review to relink`)
+  const located=locateReview(workspace,reviewId),sourceReview=located.sourceReview
   const source=sourceDescriptor(located.table,sourceReview),occupied=occupiedSourceKeys(workspace,reviewId)
   const candidates:ReviewRelinkCandidate[]=[]
   for(const table of getImportedTables(workspace)){
@@ -99,8 +101,7 @@ export function listReviewRelinkCandidates(workspace:WorkspaceState,reviewId:str
 }
 
 export function planRelinkPromotedReview(workspace:WorkspaceState,reviewId:string,candidateId:string):ReviewRelinkPlan{
-  const located=locateReview(workspace,reviewId),sourceReview=located.review.sourceReview
-  if(!sourceReview)throw new Error(`Frame review ${reviewId} has no imported source review to relink`)
+  const located=locateReview(workspace,reviewId),sourceReview=located.sourceReview
   const candidate=listReviewRelinkCandidates(workspace,reviewId).find((item)=>item.id===candidateId)
   if(!candidate)throw new Error(`Unknown or unavailable review relink target: ${candidateId}`)
   if(candidate.kind!==sourceReview.kind)throw new Error(`Cannot relink ${sourceReview.kind} review to ${candidate.kind}`)
