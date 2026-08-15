@@ -6,7 +6,7 @@ import {
   type VersionedWorkspaceSession,
 } from '../versioning'
 import { planTransactionRevert } from '../revert'
-import { compareWorkspaceStates } from '../workspaceCompare'
+import { compareWorkspaceStates, type WorkspaceVersionValue } from '../workspaceCompare'
 
 export function HistoryBrowser({
   session,
@@ -93,5 +93,5 @@ export function HistoryBrowser({
 function DiffList({ title, diffs, compact = false }: { title: string; diffs: ReturnType<typeof compareWorkspaceStates>; compact?: boolean }) {
   return <section className={compact ? 'diff-section compact' : 'diff-section'}><div className="diff-section-title">{title}</div>{diffs.length === 0 ? <div className="diff-empty">No semantic differences.</div> : diffs.map((diff, index) => <div className="version-diff" key={`${diff.objectId}:${diff.field}:${index}`}><div><strong>{diff.label}</strong><span>{diff.field} · {diff.change}</span></div><code>{formatValue(diff.before)}</code><span>→</span><code>{formatValue(diff.after)}</code></div>)}</section>
 }
-function formatValue(value: string | number | null) { if (value === null) return '—'; const text = String(value).replace(/\s+/g, ' ').trim(); return text.length > 90 ? `${text.slice(0, 87)}…` : text }
+function formatValue(value: WorkspaceVersionValue) { if (value === null) return '—'; const text = String(value).replace(/\s+/g, ' ').trim(); return text.length > 90 ? `${text.slice(0, 87)}…` : text }
 function formatTimestamp(value: string) { const date = new Date(value); return Number.isNaN(date.getTime()) ? value : date.toLocaleString() }
