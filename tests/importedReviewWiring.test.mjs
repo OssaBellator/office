@@ -45,6 +45,26 @@ test('Word comments become source-only workspace review anchored to imported sem
   assert.match(search,/Source review/)
 })
 
+test('Word source review promotion remaps by comment identity and detaches safely when the anchor disappears',async()=>{
+  const parser=await source('src/docxCommentImport.ts')
+  const codec=await source('src/workspaceReviewCodec.ts')
+  const inbox=await source('src/workspaceReviewInbox.ts')
+  const context=await source('src/components/ContextPanel.tsx')
+  const editor=await source('src/components/ReviewPromotionDialog.tsx')
+  const promotion=await source('src/reviewPromotion.ts')
+  assert.match(promotion,/kind:'word-comment'/)
+  assert.match(promotion,/Imported Word comment source block no longer exists/)
+  assert.match(editor,/imported-word/)
+  assert.match(context,/item\.origin==='imported-word'/)
+  assert.match(context,/source detached/)
+  assert.match(parser,/sourceDetached:true/)
+  assert.match(parser,/document:strategy/)
+  assert.match(parser,/remapped to refreshed Word comment anchors/)
+  assert.match(codec,/sourceDetached/)
+  assert.match(inbox,/detachedNativeOpen/)
+  assert.match(inbox,/relinkable:archived/)
+})
+
 test('semantic history uses the review-aware workspace comparator and distinguishes source from native review',async()=>{
   const browser=await source('src/components/HistoryBrowser.tsx')
   const revert=await source('src/revert.ts')
@@ -99,7 +119,7 @@ test('canonical native review storage is workspace-level while table-owned promo
   assert.match(tableCodec,/cannot store Word provenance/)
 })
 
-test('unified Context review inbox opens a configurable promotion editor for Excel source provenance',async()=>{
+test('unified Context review inbox opens one promotion editor for Word and Excel source provenance',async()=>{
   const inbox=await source('src/workspaceReviewInbox.ts')
   const context=await source('src/components/ContextPanel.tsx')
   const editor=await source('src/components/ReviewPromotionDialog.tsx')
@@ -107,10 +127,12 @@ test('unified Context review inbox opens a configurable promotion editor for Exc
   const sync=await source('src/officeImportSync.ts')
   assert.match(inbox,/source-thread/)
   assert.match(inbox,/frame-data/)
+  assert.match(inbox,/imported-word/)
   assert.match(context,/ReviewPromotionDialog/)
   assert.match(context,/setPromotionSourceId\(item\.id\)/)
   assert.match(context,/>Promote</)
   assert.match(editor,/planPromoteSourceReview/)
+  assert.match(editor,/imported-word/)
   assert.match(editor,/\['task','comment','approval'\]/)
   assert.match(editor,/Promoted review owner/)
   assert.match(editor,/Promoted review body/)
@@ -124,7 +146,7 @@ test('unified Context review inbox opens a configurable promotion editor for Exc
   assert.match(sync,/withoutLegacyReviews/)
 })
 
-test('archived native review can be explicitly relinked to ranked refreshed source review',async()=>{
+test('archived native review can be explicitly relinked to ranked refreshed spreadsheet source review',async()=>{
   const inbox=await source('src/workspaceReviewInbox.ts')
   const context=await source('src/components/ContextPanel.tsx')
   const editor=await source('src/components/ReviewRelinkDialog.tsx')
