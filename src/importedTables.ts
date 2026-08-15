@@ -1,5 +1,6 @@
 import type { WorkspaceState } from './model.ts'
 import type { ImportedSheet, ImportedSheetVisibility } from './officeParsers.ts'
+import type { WorkspaceReviewRecord } from './workspaceReviews.ts'
 
 export type ImportedTableCell = string | number | boolean | null
 export type ImportedTableColumn = { id:string; label:string; type:'text'|'number'|'boolean' }
@@ -33,6 +34,7 @@ export type ImportedDataTable = {
   linkByCell?:Record<string,ImportedCellLink>
   commentByCell?:Record<string,ImportedCellComment>
   threadByCell?:Record<string,ImportedCellReviewThread>
+  promotedReviews?:WorkspaceReviewRecord[]
   sourceVisibility?:ImportedSheetVisibility
   sourceDateSystem?:ImportedDateSystem
 }
@@ -97,7 +99,8 @@ export function importedTableSummary(table: ImportedDataTable) {
   const notes=Object.keys(table.commentByCell??{}).length
   const threads=Object.keys(table.threadByCell??{}).length
   const replies=Object.values(table.threadByCell??{}).reduce((sum,thread)=>sum+Math.max(0,thread.comments.length-1),0)
+  const promoted=table.promotedReviews?.length??0
   const visibility=table.sourceVisibility&&table.sourceVisibility!=='visible'?` · source ${table.sourceVisibility==='veryHidden'?'very hidden':'hidden'}`:''
   const dateSystem=table.sourceDateSystem==='1904'?' · 1904 date system':''
-  return `${table.label} · ${table.rows.length} rows × ${table.columns.length} columns${formulas?` · ${formulas} preserved formula${formulas===1?'':'s'}`:''}${formats?` · ${formats} number format${formats===1?'':'s'}`:''}${links?` · ${links} link${links===1?'':'s'}`:''}${notes?` · ${notes} note${notes===1?'':'s'}`:''}${threads?` · ${threads} review thread${threads===1?'':'s'}${replies?` + ${replies} repl${replies===1?'y':'ies'}`:''}`:''}${visibility}${dateSystem}`
+  return `${table.label} · ${table.rows.length} rows × ${table.columns.length} columns${formulas?` · ${formulas} preserved formula${formulas===1?'':'s'}`:''}${formats?` · ${formats} number format${formats===1?'':'s'}`:''}${links?` · ${links} link${links===1?'':'s'}`:''}${notes?` · ${notes} note${notes===1?'':'s'}`:''}${threads?` · ${threads} review thread${threads===1?'':'s'}${replies?` + ${replies} repl${replies===1?'y':'ies'}`:''}`:''}${promoted?` · ${promoted} promoted Frame review${promoted===1?'':'s'}`:''}${visibility}${dateSystem}`
 }
