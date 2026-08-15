@@ -4,7 +4,7 @@ import { parseWorkspaceReviewRecord } from './workspaceReviewCodec.ts'
 
 export type WorkspaceReviewKind='comment'|'task'|'approval'
 export type WorkspaceReviewStatus='open'|'resolved'|'pending'|'approved'
-export type WorkspaceReviewSource={
+export type ExcelWorkspaceReviewSource={
   kind:'excel-note'|'excel-thread'
   source:string
   tableId:string
@@ -12,6 +12,13 @@ export type WorkspaceReviewSource={
   columnId:string
   sourceReviewId:string
 }
+export type WordWorkspaceReviewSource={
+  kind:'word-comment'
+  source:string
+  blockId:string
+  sourceReviewId:string
+}
+export type WorkspaceReviewSource=ExcelWorkspaceReviewSource|WordWorkspaceReviewSource
 export type WorkspaceReviewRecord={
   id:string
   objectId:string
@@ -22,6 +29,7 @@ export type WorkspaceReviewRecord={
   status:WorkspaceReviewStatus
   createdAt:string
   sourceReview?:WorkspaceReviewSource
+  sourceOnly?:boolean
 }
 
 type ExtendedWorkspaceState=WorkspaceState&{workspaceReviews?:unknown}
@@ -60,11 +68,12 @@ export function materializeWorkspaceReviews(workspace:WorkspaceState):WorkspaceS
 }
 
 export function workspaceReviewIsOpen(review:WorkspaceReviewRecord){
+  if(review.sourceOnly)return false
   return review.kind==='approval'?review.status!=='approved':review.status!=='resolved'
 }
 
 export function workspaceReviewSummary(workspace:WorkspaceState){
-  const reviews=getWorkspaceReviews(workspace)
+  const all=getWorkspaceReviews(workspace),reviews=all.filter((review)=>!review.sourceOnly),sourceOnly=all.filter((review)=>review.sourceOnly)
   return{
     total:reviews.length,
     open:reviews.filter(workspaceReviewIsOpen).length,
@@ -72,5 +81,6 @@ export function workspaceReviewSummary(workspace:WorkspaceState){
     pendingApprovals:reviews.filter((review)=>review.kind==='approval'&&review.status!=='approved').length,
     unresolvedComments:reviews.filter((review)=>review.kind==='comment'&&review.status!=='resolved').length,
     promotedFromSource:reviews.filter((review)=>Boolean(review.sourceReview)).length,
+    sourceOnly:sourceOnly.length,
   }
 }
