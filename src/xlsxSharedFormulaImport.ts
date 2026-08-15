@@ -1,7 +1,7 @@
 import { readOfficeXml, readOfficeZip } from './officeArchive.ts'
 import { importedTableCellKey, type ImportedDataTable } from './importedTables.ts'
 import type { OfficeImportPlan } from './officeImportPlanner.ts'
-import { parsePackageRelationships, parseXlsxSheetXml, resolvePackagePath } from './officeParsers.ts'
+import { parsePackageRelationships, parseXlsxSheetXml, resolvePackagePath, type ImportedSheetCell } from './officeParsers.ts'
 import type { VersionedWorkspaceCommand } from './semanticCommands.ts'
 
 function attribute(fragment:string,name:string){return fragment.match(new RegExp(`(?:^|\\s)(?:[\\w.-]+:)?${name}="([^"]*)"`,'i'))?.[1]}
@@ -46,7 +46,7 @@ export function expandXlsxSharedFormulas(sheetXml:string):Map<string,string>{
 }
 
 function rowNumbers(sheetXml:string){return[...sheetXml.matchAll(/<row\b([^>]*)>([\s\S]*?)<\/row>/gi)].map((match,index)=>Number(attribute(match[1],'r')??index+1))}
-function nonEmpty(row:Array<string|number|null>){return row.some((cell)=>cell!==null&&String(cell).trim()!=='')}
+function nonEmpty(row:Array<ImportedSheetCell>){return row.some((cell)=>cell!==null&&String(cell).trim()!=='')}
 function attachFormulas(table:ImportedDataTable,sheetXml:string){
   const formulas=expandXlsxSharedFormulas(sheetXml);if(!formulas.size)return table
   const parsedRows=parseXlsxSheetXml(sheetXml),numbers=rowNumbers(sheetXml)
