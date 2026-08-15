@@ -3,7 +3,7 @@ import { getImportedTables, type ImportedDataTable } from './importedTables.ts'
 import { tableThreadedReviewItems } from './importedThreadedReview.ts'
 import type { WorkspaceState } from './model.ts'
 import type { VersionedWorkspaceCommand } from './semanticCommands.ts'
-import type { WorkspaceReviewRecord, WorkspaceReviewSource } from './workspaceReviews.ts'
+import { getWorkspaceReviews, type WorkspaceReviewRecord, type WorkspaceReviewSource } from './workspaceReviews.ts'
 
 export type ReviewRelinkCandidate={
   id:string
@@ -28,25 +28,24 @@ export type ReviewRelinkPlan={
   fromTableId:string
   candidate:ReviewRelinkCandidate
   review:WorkspaceReviewRecord
-  command:Extract<VersionedWorkspaceCommand,{type:'data.imported.replace'}>
+  command:Extract<VersionedWorkspaceCommand,{type:'review.workspace.replace'}>
 }
 
-type LocatedReview={table:ImportedDataTable;tableIndex:number;review:WorkspaceReviewRecord}
+type LocatedReview={table:ImportedDataTable|undefined;review:WorkspaceReviewRecord}
 type SourceDescriptor={kind:'excel-note'|'excel-thread';body:string;author:string;columnLabel:string;tableLabel:string;sourceReviewId:string}
 
 export function isReviewArchiveTable(table:ImportedDataTable){return table.label.endsWith(' · review archive')}
 function baseTableLabel(label:string){return label.replace(/ · review archive$/,'')}
 
 function locateReview(workspace:WorkspaceState,reviewId:string):LocatedReview{
-  const tables=getImportedTables(workspace)
-  for(let tableIndex=0;tableIndex<tables.length;tableIndex+=1){
-    const table=tables[tableIndex],review=table.promotedReviews?.find((item)=>item.id===reviewId)
-    if(review)return{table,tableIndex,review}
-  }
-  throw new Error(`Unknown promoted Frame review: ${reviewId}`)
+  const review=getWorkspaceReviews(workspace).find((item)=>item.id===reviewId)
+  if(!review)throw new Error(`Unknown promoted Frame review: ${reviewId}`)
+  const table=review.sourceReview?getImportedTables(workspace).find((candidate)=>candidate.id===review.sourceReview!.tableId):undefined
+  return{table,review}
 }
 
-function sourceDescriptor(table:ImportedDataTable,sourceReview:WorkspaceReviewSource):SourceDescriptor|null{
+function sourceDescriptor(table:ImportedDataTable|undefined,sourceReview:WorkspaceReviewSource):SourceDescriptor|null{
+  if(!table)return null
   if(sourceReview.kind==='excel-note'){
     const item=tableReviewItems(table).find((candidate)=>candidate.rowId===sourceReview.rowId&&candidate.columnId===sourceReview.columnId)
     return item?{kind:'excel-note',body:item.text,author:item.author??'Source author',columnLabel:item.columnLabel,tableLabel:item.tableLabel,sourceReviewId:sourceReview.sourceReviewId}:null
@@ -68,7 +67,7 @@ function candidateScore(candidate:Omit<ReviewRelinkCandidate,'score'|'matchHints
 
 function occupiedSourceKeys(workspace:WorkspaceState,exceptReviewId:string){
   const keys=new Set<string>()
-  for(const table of getImportedTables(workspace))for(const review of table.promotedReviews??[]){
+  for(const review of getWorkspaceReviews(workspace)){
     if(review.id===exceptReviewId||!review.sourceReview)continue
     keys.add(`${review.sourceReview.source}|${review.sourceReview.sourceReviewId}`)
   }
@@ -106,18 +105,12 @@ export function planRelinkPromotedReview(workspace:WorkspaceState,reviewId:strin
   if(!candidate)throw new Error(`Unknown or unavailable review relink target: ${candidateId}`)
   if(candidate.kind!==sourceReview.kind)throw new Error(`Cannot relink ${sourceReview.kind} review to ${candidate.kind}`)
   if(candidate.source!==sourceReview.source)throw new Error('Review relink target must come from the same source file')
-
-  const tables=getImportedTables(workspace),fromIndex=tables.findIndex((table)=>table.id===located.table.id),toIndex=tables.findIndex((table)=>table.id===candidate.tableId)
-  if(fromIndex<0||toIndex<0)throw new Error('Review relink source or target table no longer exists')
   const updatedReview:WorkspaceReviewRecord={
     ...located.review,
     objectId:`table:${candidate.tableId}:${candidate.rowId}`,
     label:`${candidate.tableLabel} · ${candidate.columnLabel}`,
     sourceReview:{kind:candidate.kind,source:candidate.source,tableId:candidate.tableId,rowId:candidate.rowId,columnId:candidate.columnId,sourceReviewId:candidate.sourceReviewId},
   }
-  const from=tables[fromIndex],remaining=(from.promotedReviews??[]).filter((review)=>review.id!==reviewId)
-  tables[fromIndex]={...from,...(remaining.length?{promotedReviews:remaining}:{promotedReviews:undefined})}
-  const target=tables[toIndex],targetReviews=[...(target.promotedReviews??[]),updatedReview]
-  tables[toIndex]={...target,promotedReviews:targetReviews}
-  return{reviewId,fromTableId:located.table.id,candidate,review:updatedReview,command:{type:'data.imported.replace',tables}}
+  const reviews=getWorkspaceReviews(workspace).map((review)=>review.id===reviewId?updatedReview:review)
+  return{reviewId,fromTableId:sourceReview.tableId,candidate,review:updatedReview,command:{type:'review.workspace.replace',reviews}}
 }
