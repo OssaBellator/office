@@ -21,6 +21,7 @@ export function WorkspaceTransferDialog({
   onImportOffice: () => void
 }) {
   const exportMode = mode === 'export'
+  const openOfficeExport=()=>{if(typeof window==='undefined'){onExportOffice();return}window.location.assign('./office-export.html')}
   const openOfficeImport=()=>{if(typeof window==='undefined'){onImportOffice();return}window.location.assign('./office-import.html')}
   const openGoogleDrive=()=>{if(typeof window!=='undefined')window.location.assign('./google-drive.html')}
   return <div className="transfer-backdrop" onMouseDown={onClose}>
@@ -31,7 +32,7 @@ export function WorkspaceTransferDialog({
       </header>
       {exportMode ? <>
         <div className="transfer-grid">
-          <TransferAction icon={FileText} title="Office compatibility set" detail="Generate a DOCX strategy document, PPTX board narrative and XLSX workbook from the current semantic workspace." onClick={onExportOffice} action="Export Office" />
+          <TransferAction icon={FileText} title="Office compatibility set" detail="Review fidelity decisions, then generate DOCX, PPTX and XLSX projections from the current semantic workspace." onClick={openOfficeExport} action="Review Office export" />
           <TransferAction icon={FileText} title="Strategy Markdown" detail="Blocks, claims, citations, reviews, metrics and decision context." onClick={onExportStrategy} />
           <TransferAction icon={Presentation} title="Board narrative Markdown" detail="Visible authored scene order plus speaker notes and live narrative." onClick={onExportBoard} />
           <TransferAction icon={Table2} title="Actuals CSV" detail="Typed Regions table in a portable spreadsheet format." onClick={onExportRegions} />
