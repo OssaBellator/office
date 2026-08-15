@@ -14,7 +14,7 @@ export type OfficeImportReport={
   commandTypes:Record<string,number>
   warningCount:number
   warningGroups:InteropWarningSummary[]
-  preserved:{documentBlocks:number;tables:number;formulaCells:number;formattedCells:number;hyperlinkCells:number;inertHyperlinkCells:number;reviewNoteCells:number;reviewThreadCells:number;threadedComments:number;openReviewThreads:number;promotedReviewItems:number;openPromotedReviews:number;booleanCells:number;hiddenTables:number;veryHiddenTables:number;date1904Tables:number;scenes:number}
+  preserved:{documentBlocks:number;sourceReviewComments:number;tables:number;formulaCells:number;formattedCells:number;hyperlinkCells:number;inertHyperlinkCells:number;reviewNoteCells:number;reviewThreadCells:number;threadedComments:number;openReviewThreads:number;promotedReviewItems:number;openPromotedReviews:number;booleanCells:number;hiddenTables:number;veryHiddenTables:number;date1904Tables:number;scenes:number}
 }
 
 function warningKind(warning:string):InteropWarningKind{
@@ -54,7 +54,10 @@ function tableFidelity(tables:ReturnType<typeof getImportedTables>){
   }
   return{formulaCells,formattedCells,hyperlinkCells,inertHyperlinkCells,reviewNoteCells,reviewThreadCells,threadedComments,openReviewThreads,legacyPromotedReviewItems,legacyOpenPromotedReviews,booleanCells,hiddenTables,veryHiddenTables,date1904Tables}
 }
-function reviewCounts(reviews:WorkspaceReviewRecord[]){return{promotedReviewItems:reviews.length,openPromotedReviews:reviews.filter(workspaceReviewIsOpen).length}}
+function reviewCounts(reviews:WorkspaceReviewRecord[]){
+  const native=reviews.filter((review)=>!review.sourceOnly),sourceOnly=reviews.filter((review)=>review.sourceOnly)
+  return{promotedReviewItems:native.length,openPromotedReviews:native.filter(workspaceReviewIsOpen).length,sourceReviewComments:sourceOnly.filter((review)=>review.sourceReview?.kind==='word-comment').length}
+}
 
 export function summarizeOfficeImportPlan(plan:OfficeImportPlan):OfficeImportReport{
   const commandTypes:Record<string,number>={}
@@ -70,16 +73,17 @@ export function summarizeOfficeImportPlan(plan:OfficeImportPlan):OfficeImportRep
     if(command.type==='review.workspace.replace')explicitReviews=command.reviews
     if(command.type==='presentation.replace')scenes+=command.value.importedScenes?.length??0
   }
-  const promoted=explicitReviews?reviewCounts(explicitReviews):{promotedReviewItems:legacyPromotedReviewItems,openPromotedReviews:legacyOpenPromotedReviews}
-  return{kind:plan.kind,importedItems:plan.importedItems,commandCount:plan.commands.length,commandTypes,warningCount:plan.warnings.length,warningGroups:groupInteropWarnings(plan.warnings),preserved:{documentBlocks,tables,formulaCells,formattedCells,hyperlinkCells,inertHyperlinkCells,reviewNoteCells,reviewThreadCells,threadedComments,openReviewThreads,...promoted,booleanCells,hiddenTables,veryHiddenTables,date1904Tables,scenes}}
+  const reviews=explicitReviews?reviewCounts(explicitReviews):{promotedReviewItems:legacyPromotedReviewItems,openPromotedReviews:legacyOpenPromotedReviews,sourceReviewComments:0}
+  return{kind:plan.kind,importedItems:plan.importedItems,commandCount:plan.commands.length,commandTypes,warningCount:plan.warnings.length,warningGroups:groupInteropWarnings(plan.warnings),preserved:{documentBlocks,tables,formulaCells,formattedCells,hyperlinkCells,inertHyperlinkCells,reviewNoteCells,reviewThreadCells,threadedComments,openReviewThreads,...reviews,booleanCells,hiddenTables,veryHiddenTables,date1904Tables,scenes}}
 }
 
 export function describeWorkspaceInteropState(workspace:WorkspaceState){
   const semantic=getSemanticDocument(workspace),tables=getImportedTables(workspace),presentation=getPresentationState(workspace),reviews=getWorkspaceReviews(workspace)
-  const importedBlocks=semantic.blocks.filter((block)=>block.type==='paragraph'&&Boolean(block.source)),fidelity=tableFidelity(tables),promoted=reviewCounts(reviews)
+  const importedBlocks=semantic.blocks.filter((block)=>block.type==='paragraph'&&Boolean(block.source)),fidelity=tableFidelity(tables),reviewState=reviewCounts(reviews)
   return{
     importedDocumentBlocks:importedBlocks.length,
     importedDocumentSources:[...new Set(importedBlocks.flatMap((block)=>block.type==='paragraph'&&block.source?[block.source]:[]))].sort(),
+    preservedWordSourceComments:reviewState.sourceReviewComments,
     importedTables:tables.length,
     importedTableSources:[...new Set(tables.map((table)=>table.source))].sort(),
     preservedFormulaCells:fidelity.formulaCells,
@@ -90,8 +94,8 @@ export function describeWorkspaceInteropState(workspace:WorkspaceState){
     preservedReviewThreads:fidelity.reviewThreadCells,
     preservedThreadedComments:fidelity.threadedComments,
     openImportedReviewThreads:fidelity.openReviewThreads,
-    promotedDataReviews:promoted.promotedReviewItems,
-    openPromotedDataReviews:promoted.openPromotedReviews,
+    promotedDataReviews:reviewState.promotedReviewItems,
+    openPromotedDataReviews:reviewState.openPromotedReviews,
     preservedBooleanCells:fidelity.booleanCells,
     hiddenImportedTables:fidelity.hiddenTables,
     veryHiddenImportedTables:fidelity.veryHiddenTables,
