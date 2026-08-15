@@ -18,7 +18,7 @@ export type NativeWorkspaceReviewItem={
 }
 
 export type PromotedWorkspaceReviewItem={
-  origin:'frame-data'
+  origin:'frame-workspace'
   id:string
   objectId:string
   label:string
@@ -98,7 +98,7 @@ export function listWorkspaceReviewInbox(workspace:WorkspaceState):WorkspaceRevi
       const sourceReview=review.sourceReview
       const table=sourceReview&&sourceReview.kind!=='word-comment'?tableById.get(sourceReview.tableId):undefined
       const archived=Boolean(table&&archiveLabel(table.label)),detached=Boolean(review.sourceDetached)
-      return{origin:'frame-data',id:review.id,objectId:review.objectId,label:review.label,kind:review.kind,body:review.body,owner:review.owner,status:review.status,source:sourceReview?.source??'Frame',archived,detached,relinkable:archived&&Boolean(sourceReview&&sourceReview.kind!=='word-comment'),actionable:true}
+      return{origin:'frame-workspace',id:review.id,objectId:review.objectId,label:review.label,kind:review.kind,body:review.body,owner:review.owner,status:review.status,source:sourceReview?.source??'Frame',archived,detached,relinkable:archived&&Boolean(sourceReview&&sourceReview.kind!=='word-comment'),actionable:true}
     })
   const wordComments=allWorkspaceReviews
     .filter((review)=>review.sourceOnly&&review.sourceReview?.kind==='word-comment')
@@ -142,7 +142,7 @@ export function listWorkspaceReviewInbox(workspace:WorkspaceState):WorkspaceRevi
 export function summarizeWorkspaceReviewInbox(workspace:WorkspaceState){
   const items=listWorkspaceReviewInbox(workspace)
   const documentNative=items.filter((item)=>item.origin==='frame')
-  const promotedNative=items.filter((item)=>item.origin==='frame-data')
+  const promotedNative=items.filter((item)=>item.origin==='frame-workspace')
   const wordComments=items.filter((item)=>item.origin==='imported-word')
   const notes=items.filter((item)=>item.origin==='imported-excel')
   const threads=items.filter((item)=>item.origin==='imported-excel-thread')
