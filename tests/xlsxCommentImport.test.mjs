@@ -62,7 +62,8 @@ test('normal XLSX compatibility export deliberately keeps classic notes Frame-on
   assert.equal([...entries.keys()].some((path)=>/vmlDrawing/i.test(path)),false)
 })
 
-test('threaded Excel comments remain explicit warning-only fidelity',async()=>{
+test('empty or unattached threaded-comment parts produce an explicit parsing warning',async()=>{
   const plan=await planSecureOfficeImport(cloneSeedWorkspace(),commentsWorkbook({threaded:true}),'pipeline.xlsx')
-  assert.equal(plan.warnings.some((warning)=>/threaded comments are not imported yet/.test(warning)),true)
+  assert.equal(plan.warnings.some((warning)=>/threaded-comment parts were detected but no cell-attached review threads could be parsed/i.test(warning)),true)
+  assert.equal(plan.warnings.some((warning)=>/threaded comments are not imported yet/i.test(warning)),false)
 })
