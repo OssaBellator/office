@@ -45,7 +45,7 @@ test('Word comments become source-only workspace review anchored to imported sem
   assert.match(search,/Source review/)
 })
 
-test('semantic history uses the review-aware workspace comparator',async()=>{
+test('semantic history uses the review-aware workspace comparator and distinguishes source from native review',async()=>{
   const browser=await source('src/components/HistoryBrowser.tsx')
   const revert=await source('src/revert.ts')
   const compare=await source('src/workspaceReviewCompare.ts')
@@ -53,7 +53,7 @@ test('semantic history uses the review-aware workspace comparator',async()=>{
   assert.doesNotMatch(browser,/compareWorkspaceStates\(selected\.transaction\.before/)
   assert.match(revert,/compareWorkspaceStatesWithReview/)
   assert.match(compare,/getWorkspaceReviews/)
-  assert.match(compare,/Frame review status/)
+  assert.match(compare,/sourceOnly\?'Source review':'Frame review'/)
 })
 
 test('imported Data cells render source review and canonical native workspace review provenance',async()=>{
@@ -117,6 +117,7 @@ test('unified Context review inbox opens a configurable promotion editor for Exc
   assert.match(promotion,/body\?:string/)
   assert.match(promotion,/explicit owner/)
   assert.match(promotion,/review\.workspace\.replace/)
+  assert.match(promotion,/sourceOnly/)
   assert.match(sync,/getWorkspaceReviews/)
   assert.match(sync,/findSourceReviewCell/)
   assert.match(sync,/setReviewCommand/)
