@@ -31,12 +31,14 @@ test('workspace search finds imported document blocks by source filename', () =>
   assert.equal(result.id,'block:imported-source')
 })
 
-test('workspace search finds imported Data by visibility, boolean, date-system and number-format provenance',()=>{
-  const workspace=withImportedTables(cloneSeedWorkspace(),[{id:'table:flags',label:'Control flags',source:'model.xlsx',importedAt:'now',sourceVisibility:'veryHidden',sourceDateSystem:'1904',columns:[{id:'enabled',label:'Enabled',type:'boolean'},{id:'date',label:'Date',type:'number'}],rows:[{id:'row:1',values:{enabled:true,date:45000}}],numberFormatByCell:{'row:1\u0000date':{numFmtId:165,formatCode:'yyyy-mm-dd'}}}])
+test('workspace search finds imported Data by visibility, boolean, date-system, number-format and hyperlink provenance',()=>{
+  const workspace=withImportedTables(cloneSeedWorkspace(),[{id:'table:flags',label:'Control flags',source:'model.xlsx',importedAt:'now',sourceVisibility:'veryHidden',sourceDateSystem:'1904',columns:[{id:'enabled',label:'Enabled',type:'boolean'},{id:'date',label:'Date',type:'number'}],rows:[{id:'row:1',values:{enabled:true,date:45000}}],numberFormatByCell:{'row:1\u0000date':{numFmtId:165,formatCode:'yyyy-mm-dd'}},linkByCell:{'row:1\u0000date':{kind:'external',target:'https://example.com/calendar',display:'Calendar source',tooltip:'Open source schedule'}}}])
   const results=searchWorkspace(workspace,'very hidden boolean',{kinds:['table']})
   assert.equal(results[0].id,'table:table:flags')
   assert.equal(searchWorkspace(workspace,'true',{kinds:['table']})[0].id,'table:table:flags')
   assert.equal(searchWorkspace(workspace,'1904 yyyy mm dd',{kinds:['table']})[0].id,'table:table:flags')
+  assert.equal(searchWorkspace(workspace,'calendar source schedule',{kinds:['table']})[0].id,'table:table:flags')
+  assert.equal(searchWorkspace(workspace,'example com calendar',{kinds:['table']})[0].id,'table:table:flags')
 })
 
 test('workspace search respects surface and kind filters', () => {
