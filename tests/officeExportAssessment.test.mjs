@@ -3,6 +3,7 @@ import test from 'node:test'
 import { withImportedTables } from '../src/importedTables.ts'
 import { cloneSeedWorkspace } from '../src/model.ts'
 import { assessOfficeExport } from '../src/officeExportAssessment.ts'
+import { getWorkspaceReviews, withWorkspaceReviews } from '../src/workspaceReviews.ts'
 
 test('Office export assessment counts preserved spreadsheet fidelity and native Data review',()=>{
   let workspace=cloneSeedWorkspace()
@@ -20,13 +21,25 @@ test('Office export assessment counts preserved spreadsheet fidelity and native 
   assert.equal(assessment.xlsx.openReviewThreads,1)
   assert.equal(assessment.xlsx.promotedReviewItems,1)
   assert.equal(assessment.xlsx.openPromotedReviews,1)
+  assert.equal(assessment.docx.sourceReviewComments,0)
   assert.equal(assessment.xlsx.booleanCells,1)
   assert.equal(assessment.xlsx.hiddenTables,1)
   assert.equal(assessment.warnings.some((warning)=>/cached values only/.test(warning)),true)
   assert.equal(assessment.warnings.some((warning)=>/projected back into XLSX/.test(warning)),true)
   assert.equal(assessment.warnings.some((warning)=>/Frame review provenance/.test(warning)),true)
   assert.equal(assessment.warnings.some((warning)=>/omitted from the default XLSX projection rather than flattened into legacy notes/.test(warning)),true)
-  assert.equal(assessment.warnings.some((warning)=>/native Frame Data review/.test(warning)),true)
+  assert.equal(assessment.warnings.some((warning)=>/native Frame review/.test(warning)),true)
+})
+
+test('Word source comments stay separate from native review counts and export warnings',()=>{
+  let workspace=cloneSeedWorkspace()
+  const sourceReview={id:'source-review:word-comment:strategy.docx:7',objectId:'block:business-snapshot',label:'Word comment · Snapshot',kind:'comment',body:'Confirm wording',owner:'Editor',status:'open',createdAt:'source',sourceOnly:true,sourceReview:{kind:'word-comment',source:'strategy.docx',blockId:'block:business-snapshot',sourceReviewId:'word-comment:strategy.docx:7'}}
+  workspace=withWorkspaceReviews(workspace,[...getWorkspaceReviews(workspace),sourceReview])
+  const assessment=assessOfficeExport(workspace)
+  assert.equal(assessment.docx.sourceReviewComments,1)
+  assert.equal(assessment.xlsx.promotedReviewItems,0)
+  assert.equal(assessment.xlsx.openPromotedReviews,0)
+  assert.equal(assessment.warnings.some((warning)=>/imported Word source comment/.test(warning)),true)
 })
 
 test('Office export assessment distinguishes inert external hyperlinks from exportable links',()=>{
