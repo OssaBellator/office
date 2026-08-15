@@ -81,6 +81,29 @@ This happens when, for example:
 
 The import plan emits a warning explaining how many promoted Frame review records were archived. Review archives keep the original Data context and native review record so work is not dropped or silently attached to the wrong cell.
 
+### Explicit archive relinking
+
+An archived native review exposes a **Relink** action in the Context review inbox. Frame presents only compatible refreshed source review from the same source file and same review kind.
+
+Candidate targets are ranked using inspectable match signals such as:
+
+- same stable source identity;
+- same sheet;
+- same source text;
+- same source author; and
+- same column.
+
+A source review already claimed by another native Frame review is not offered as a candidate. The user selects the target explicitly; Frame does not auto-apply the highest-ranked candidate.
+
+Relinking changes only:
+
+- the native review's Data target; and
+- its imported source pointer/source review identity.
+
+The native review's Frame ID, kind, authored body, owner, status, creation timestamp, semantic history, and accountability remain intact. Relinking is emitted as the same versioned `data.imported.replace` semantic transaction used by promotion/review status changes, so undo restores the archived placement.
+
+Copied source provenance inside `· review archive` tables is excluded from the normal source-review inbox so it cannot appear as a second fresh **Promote** action. The Data table still retains that copied provenance for auditability.
+
 ## Imported table lifecycle
 
 Promoted Data review records are currently stored with their Imported Data table. This is a prototype implementation choice that lets promotion, resolution, undo/redo, revert, persistence and synchronization reuse the hardened `data.imported.replace` semantic transaction path.
