@@ -1,3 +1,4 @@
+import { getImportedTables } from './importedTables.ts'
 import type { WorkspaceState } from './model.ts'
 
 export type WorkspaceReviewKind='comment'|'task'|'approval'
@@ -22,14 +23,8 @@ export type WorkspaceReviewRecord={
   sourceReview?:WorkspaceReviewSource
 }
 
-type ExtendedWorkspaceState=WorkspaceState&{workspaceReviews?:WorkspaceReviewRecord[]}
-
 export function getWorkspaceReviews(workspace:WorkspaceState):WorkspaceReviewRecord[]{
-  return structuredClone((workspace as ExtendedWorkspaceState).workspaceReviews??[])
-}
-
-export function withWorkspaceReviews(workspace:WorkspaceState,reviews:WorkspaceReviewRecord[]):WorkspaceState{
-  return{...workspace,workspaceReviews:structuredClone(reviews)} as WorkspaceState
+  return getImportedTables(workspace).flatMap((table)=>structuredClone(table.promotedReviews??[]))
 }
 
 export function workspaceReviewIsOpen(review:WorkspaceReviewRecord){
