@@ -39,13 +39,15 @@ export function planPromoteSourceReview(
   const kind=options.kind??'task',status:WorkspaceReviewStatus=kind==='approval'?'pending':'open'
   const body=options.body===undefined?source.body:options.body.trim()
   if(!body)throw new Error('Promoted Frame review body must not be blank')
+  const owner=options.owner?.trim()||'Unassigned'
+  if(kind==='approval'&&owner==='Unassigned')throw new Error('Promoted approvals require an explicit owner')
   const review:WorkspaceReviewRecord={
     id:promotedReviewId(source.sourceReviewId),
     objectId:`table:${source.tableId}:${source.rowId}`,
     label:source.label,
     kind,
     body,
-    owner:options.owner?.trim()||'Unassigned',
+    owner,
     status,
     createdAt:options.createdAt??'just now',
     sourceReview:{kind:source.kind,source:source.source,tableId:source.tableId,rowId:source.rowId,columnId:source.columnId,sourceReviewId:source.sourceReviewId},
