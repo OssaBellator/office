@@ -71,13 +71,15 @@ export async function preserveDocxCommentMetadata(
   plan:OfficeImportPlan,
 ):Promise<OfficeImportPlan>{
   if(plan.kind!=='docx')return plan
-  const entries=await readOfficeZip(input),commentsXml=readOfficeXml(entries,'word/comments.xml')
-  if(!commentsXml)return plan
+  const entries=await readOfficeZip(input),currentReviews=getWorkspaceReviews(workspace)
+  const commentsXml=readOfficeXml(entries,'word/comments.xml')
+  const priorWordReview=currentReviews.some((review)=>review.sourceReview?.kind==='word-comment'&&review.sourceReview.source===fileName)
+  if(!commentsXml&&!priorWordReview)return plan
   const documentXml=readOfficeXml(entries,'word/document.xml')
   if(!documentXml)return plan
-  const comments=parseDocxComments(commentsXml),anchors=parseDocxCommentParagraphAnchors(documentXml)
+  const comments=commentsXml?parseDocxComments(commentsXml):[],anchors=commentsXml?parseDocxCommentParagraphAnchors(documentXml):new Map<string,number>()
   const inserts=plan.commands.filter((command):command is Extract<VersionedWorkspaceCommand,{type:'document.block.insert'}>=>command.type==='document.block.insert'&&command.block.type==='paragraph'&&command.block.source===fileName)
-  const currentReviews=getWorkspaceReviews(workspace),sourceReviews:WorkspaceReviewRecord[]=[]
+  const sourceReviews:WorkspaceReviewRecord[]=[]
   let skipped=0
   for(const comment of comments){
     const paragraphIndex=anchors.get(comment.id),insert=paragraphIndex===undefined?undefined:inserts[paragraphIndex]
@@ -108,16 +110,16 @@ export async function preserveDocxCommentMetadata(
       return[{...review,objectId:refreshed.objectId,label:refreshed.label,sourceDetached:undefined,sourceReview:{...sourceReview,blockId:refreshed.sourceReview.blockId}}]
     }
     detachedNative+=1
-    return[{...review,objectId:'document:strategy',label:`Strategy document · detached source review`,sourceDetached:true}]
+    return[{...review,objectId:'document:strategy',label:'Strategy document · detached source review',sourceDetached:true}]
   })
   const nextReviews=[...retainedReviews,...sourceReviews],commands=[...plan.commands]
   if(!sameReviewState(nextReviews,currentReviews))setReviewCommand(commands,nextReviews)
   const warnings=plan.warnings.filter((warning)=>!/^Word comments and comment threads are not imported yet\./i.test(warning))
-  if(sourceReviews.length)warnings.push(`${sourceReviews.length} Word comment${sourceReviews.length===1?' was':'s were'} preserved as read-only source review provenance on imported document blocks.`)
-  else warnings.push('A Word comments part was detected, but no non-empty comment body could be anchored to a retained document paragraph.')
+  if(commentsXml&&sourceReviews.length)warnings.push(`${sourceReviews.length} Word comment${sourceReviews.length===1?' was':'s were'} preserved as read-only source review provenance on imported document blocks.`)
+  else if(commentsXml)warnings.push('A Word comments part was detected, but no non-empty comment body could be anchored to a retained document paragraph.')
   if(skipped)warnings.push(`${skipped} Word comment${skipped===1?' could':'s could'} not be anchored because its comment range did not map to a retained non-empty document paragraph.`)
   if(remappedNative)warnings.push(`${remappedNative} promoted Frame review${remappedNative===1?' was':'s were'} remapped to refreshed Word comment anchors by stable source comment identity.`)
   if(detachedNative)warnings.push(`${detachedNative} promoted Frame review${detachedNative===1?' remains':'s remain'} actionable but ${detachedNative===1?'is':'are'} detached to the Strategy document because the source Word comment no longer has a retained anchor.`)
-  if(entries.has('word/commentsExtended.xml')||entries.has('word/commentsExtensible.xml')||entries.has('word/commentsIds.xml'))warnings.push('Additional modern Word comment-thread metadata was detected. Frame preserves classic comment bodies and document anchors, but reply/thread metadata is not translated yet.')
+  if(commentsXml&&(entries.has('word/commentsExtended.xml')||entries.has('word/commentsExtensible.xml')||entries.has('word/commentsIds.xml')))warnings.push('Additional modern Word comment-thread metadata was detected. Frame preserves classic comment bodies and document anchors, but reply/thread metadata is not translated yet.')
   return{...plan,commands,warnings,importedItems:plan.importedItems+sourceReviews.length}
 }
