@@ -20,7 +20,7 @@ export function parseXlsxComments(commentsXml:string):Map<string,ImportedCellCom
     const ref=(attribute(match[1],'ref')??'').toUpperCase();if(!/^[A-Z]+\d+$/.test(ref))continue
     const text=textRuns(match[2]).trim();if(!text)continue
     const authorId=Number(attribute(match[1],'authorId')),author=Number.isInteger(authorId)&&authorId>=0?authors[authorId]:undefined
-    comments.set(ref,{text,...(author?{author}:{})})
+    comments.set(ref,{text,sourceRef:ref,...(author?{author}:{})})
   }
   return comments
 }
@@ -97,7 +97,7 @@ export async function preserveXlsxCommentMetadata(
   const warnings=plan.warnings.filter((warning)=>!/^Excel cell comments and notes are not imported yet\./i.test(warning))
   if(preserved)warnings.push(`${preserved} classic Excel cell note${preserved===1?' was':'s were'} preserved as review provenance on imported Data.`)
   const skipped=Math.max(0,totalComments-preserved);if(skipped)warnings.push(`${skipped} Excel note${skipped===1?' could':'s could'} not be attached because the referenced cell is outside the retained Data rows/columns.`)
-  if([...entries.keys()].some((path)=>/^xl\/threadedComments\//i.test(path)))warnings.push('Modern Excel threaded comments are not imported yet; classic cell notes are preserved.')
+  if([...entries.keys()].some((path)=>/^xl\/threadedComments\//i.test(path)))warnings.push('Modern Excel threaded comments are handled by the threaded-review enrichment pass; classic cell notes are preserved separately.')
   if(addedTables)warnings.push(`${addedTables} noted worksheet${addedTables===1?' was':'s were'} retained as generic Frame Data so review provenance is not discarded.`)
   return{...plan,commands,warnings,importedItems:plan.importedItems+addedTables}
 }
