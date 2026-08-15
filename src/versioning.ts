@@ -3,6 +3,7 @@ import { materializePresentationState } from './presentationState.ts'
 import { getSemanticDocument, withSemanticDocument } from './semanticDocument.ts'
 import { runVersionedCommand, versionedCommandIsNoop, type VersionedWorkspaceCommand } from './semanticCommands.ts'
 import { ensureWorkspaceKpis, REVENUE_ATTAINMENT_METRIC_ID } from './workspaceKpis.ts'
+import { materializeWorkspaceReviews } from './workspaceReviews.ts'
 
 export type VersionedWorkspaceTransaction = Omit<WorkspaceTransaction,'command'> & { command:VersionedWorkspaceCommand; revision:number; createdAt:string; eventId:string; kind:'change'|'revert'; reverts?:string }
 export type VersionedWorkspaceSession = { present:WorkspaceState; past:VersionedWorkspaceTransaction[]; future:VersionedWorkspaceTransaction[]; ledger:VersionedWorkspaceTransaction[]; nextRevision:number }
@@ -15,7 +16,7 @@ function materializeWorkspace(workspace:WorkspaceState){
   const withKpis=ensureWorkspaceKpis(workspace)
   const semantic=getSemanticDocument(withKpis)
   const enriched={...semantic,blocks:semantic.blocks.map((block)=>block.type==='metric-embed'&&block.id==='block:business-snapshot'&&!block.metricIds.includes(REVENUE_ATTAINMENT_METRIC_ID)?{...block,metricIds:[...block.metricIds,REVENUE_ATTAINMENT_METRIC_ID]}:block)}
-  return materializePresentationState(withSemanticDocument(withKpis,enriched))
+  return materializeWorkspaceReviews(materializePresentationState(withSemanticDocument(withKpis,enriched)))
 }
 function stampResult(result:WorkspaceMutationResult,eventId:string,changedAt?:string){const event={...result.event,id:eventId,changedAt:changedAt??result.event.changedAt};const workspace={...result.workspace,history:result.workspace.history.map((item,index)=>index===0?event:item)};return{...result,workspace,event}}
 export function createVersionedWorkspaceSession(workspace:WorkspaceState):VersionedWorkspaceSession{return{present:materializeWorkspace(workspace),past:[],future:[],ledger:[],nextRevision:1}}
