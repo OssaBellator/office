@@ -60,7 +60,7 @@ export function compareWorkspaceStates(before: WorkspaceState, after: WorkspaceS
   for(const id of new Set([...beforeTables.map((table)=>table.id),...afterTables.map((table)=>table.id)])){
     const l=beforeTables.find((table)=>table.id===id),r=afterTables.find((table)=>table.id===id)
     if(!l||!r){add(diffs,after,`table:${id}`,'importedTable',l?JSON.stringify(l):null,r?JSON.stringify(r):null);continue}
-    add(diffs,after,`table:${id}`,'label',l.label,r.label);add(diffs,after,`table:${id}`,'source',l.source,r.source);add(diffs,after,`table:${id}`,'sourceVisibility',l.sourceVisibility??'visible',r.sourceVisibility??'visible')
+    add(diffs,after,`table:${id}`,'label',l.label,r.label);add(diffs,after,`table:${id}`,'source',l.source,r.source);add(diffs,after,`table:${id}`,'sourceVisibility',l.sourceVisibility??'visible',r.sourceVisibility??'visible');add(diffs,after,`table:${id}`,'sourceDateSystem',l.sourceDateSystem??'1900',r.sourceDateSystem??'1900')
     const beforeColumns=new Map(l.columns.map((column)=>[column.id,column])),afterColumns=new Map(r.columns.map((column)=>[column.id,column]))
     for(const columnId of new Set([...beforeColumns.keys(),...afterColumns.keys()])){
       const lc=beforeColumns.get(columnId),rc=afterColumns.get(columnId)
@@ -76,6 +76,8 @@ export function compareWorkspaceStates(before: WorkspaceState, after: WorkspaceS
         add(diffs,after,`table:${id}:${rowId}`,label,lr.values[columnId]??null,rr.values[columnId]??null)
         const cellKey=importedTableCellKey(rowId,columnId)
         add(diffs,after,`table:${id}:${rowId}`,`${label} formula`,l.formulaByCell?.[cellKey]??null,r.formulaByCell?.[cellKey]??null)
+        const leftFormat=l.numberFormatByCell?.[cellKey],rightFormat=r.numberFormatByCell?.[cellKey]
+        add(diffs,after,`table:${id}:${rowId}`,`${label} number format`,leftFormat?JSON.stringify(leftFormat):null,rightFormat?JSON.stringify(rightFormat):null)
       }
     }
   }
