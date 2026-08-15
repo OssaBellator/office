@@ -87,9 +87,13 @@ Frame deliberately separates **what an imported source said** from **what the wo
 - Modern threaded Excel comments retain people, comment/reply IDs, parent relationships, timestamps, resolution state, and mentions.
 - Source review is searchable, version-diffed, persisted, fingerprinted, and visible on Data cells and in the Context review inbox.
 - Source review does **not** block workspace readiness by itself.
-- A source note or thread can be explicitly **Promoted** into native Frame review work linked back to the immutable source record.
-- Promoted Data tasks/comments/approvals participate in semantic history, undo/redo, revert, readiness, and export preflight.
+- **Promote** opens a review editor rather than mutating immediately: users choose Task / Comment / Approval, owner, and native Frame follow-up text while the source review remains immutable.
+- Tasks/comments may remain unassigned; promoted approvals require an explicit owner and begin pending.
+- Promoted Data review participates in semantic history, undo/redo, revert, readiness, and Office export preflight.
 - Re-import remaps promoted review by stable source identity. Ambiguous or missing source review is preserved on an explicit `· review archive` table rather than guessed or dropped.
+- Archived native review exposes **Relink**. Frame ranks compatible refreshed source notes/threads by stable identity, sheet, source text, author, and column; the user explicitly selects the target.
+- Relinking preserves the native review ID, authored body, owner, kind, status, timestamp, and history while changing only its Data target/source pointer. Undo restores the archive placement.
+- Copied source provenance inside a review archive is excluded from the normal source-review inbox so it cannot be promoted a second time.
 - Imported tables with open promoted review work are protected from deletion until that native work is resolved/approved.
 
 See `docs/REVIEW_PROVENANCE.md` for the review/source identity contract.
@@ -159,7 +163,7 @@ Presentation state participates in semantic compare and conflict-aware revert. T
 - Any two recorded workspace snapshots can be compared with semantic object/field diffs.
 - Historical transactions can be reverted as a **new revision**.
 - Reverts are conflict-aware and refuse to overwrite state that changed again afterward.
-- Review-aware comparison includes imported notes, threaded conversations, and promoted native Data review separately from underlying cell values.
+- Review-aware comparison includes imported notes, threaded conversations, promoted native Data review, archive placement, and relinked source pointers separately from underlying cell values.
 
 ### Universal command surface
 
@@ -200,7 +204,7 @@ Implemented product paths include:
 - CSV/Markdown compatibility paths and lossless Frame JSON backup;
 - package validation and dedicated local interoperability fixtures/tooling.
 
-Current XLSX fidelity includes typed booleans, hidden/very-hidden sheets, 1900/1904 date-system provenance, formula text beside cached values, safe number-format projection, safe/inert hyperlink handling, classic cell-note provenance, modern threaded-comment provenance, and native promoted Data review accounting.
+Current XLSX fidelity includes typed booleans, hidden/very-hidden sheets, 1900/1904 date-system provenance, formula text beside cached values, safe number-format projection, safe/inert hyperlink handling, classic cell-note provenance, modern threaded-comment provenance, native promoted Data review accounting, fail-safe review archives, and explicit archive relinking.
 
 Normal XLSX export deliberately keeps unsupported review semantics in Frame rather than silently flattening or embedding hidden metadata. The Office export page tells the user what stays behind before download.
 
@@ -233,10 +237,10 @@ npm run verify
 ```
 
 - `npm test` runs the complete Node test inventory.
-- `npm run test:interop` runs the focused Office/Google/imported-review interoperability suite.
+- `npm run test:interop` runs the focused Office/Google/imported-review interoperability suite, including promotion and archive relinking.
 - `npm run verify` runs tests, TypeScript validation, and the Vite production build.
 
-Coverage spans semantic formulas, relationships, charts, semantic Docs, review workflows, versioning/revert, presentation authoring, command/runtime codecs, portable workspace IO, secure Office parsing, Google Drive import, migration/synchronization, package validation, spreadsheet fidelity, source review, native review promotion, and interoperability export policy.
+Coverage spans semantic formulas, relationships, charts, semantic Docs, review workflows, versioning/revert, presentation authoring, command/runtime codecs, portable workspace IO, secure Office parsing, Google Drive import, migration/synchronization, package validation, spreadsheet fidelity, source review, native review promotion/relinking, and interoperability export policy.
 
 The current connector-only implementation environment cannot execute the complete dependency-backed checkout or open generated files in installed Microsoft Office applications. The committed local tests and `npm run verify` remain the authoritative validation gate; manual current-Microsoft-365 smoke testing remains a separate interoperability release gate.
 
@@ -262,6 +266,7 @@ src/
   workspaceReviews.ts           Native promoted Data review model
   workspaceReviewInbox.ts       Unified Docs/Data/source review projection
   reviewPromotion.ts            Source-review → native Frame review planning
+  reviewRelink.ts               Explicit review-archive candidate ranking and relinking
   importedTables.ts             Imported Data + per-cell fidelity/review provenance model
   importedTableCodec.ts         Runtime validation for imported Data and promoted review
   officeInteropImport.ts        Canonical secure Office interoperability enrichment pipeline
@@ -281,6 +286,8 @@ src/
     SemanticScene.tsx
     PresentationPlayer.tsx
     ContextPanel.tsx
+    ReviewPromotionDialog.tsx
+    ReviewRelinkDialog.tsx
     HistoryBrowser.tsx
     CommandPalette.tsx
 ```
@@ -300,6 +307,7 @@ src/
 11. **History is data.** Versions and abandoned branches remain part of the workspace instead of disappearing from an undo stack.
 12. **Story structure and story content are separate.** Presentation order/notes can be authored while scene content remains live.
 13. **Compatibility is a projection, not the native model.** Office/Google adapters are important, but Frame does not inherit their structural limitations or silently invent fidelity it cannot preserve.
+14. **Ambiguity should surface, not disappear.** Re-import archives and explicit relinking preserve work when automatic source matching cannot be trusted.
 
 ## Suggested next milestones
 
@@ -321,10 +329,11 @@ src/
 
 ### 3. Review and collaboration
 
-- Promotion editor for choosing Task / Comment / Approval, owner, and native follow-up text before committing source review into Frame work.
-- User-guided relinking of `· review archive` records to refreshed source cells/threads when automatic re-import matching is intentionally conservative.
 - Workspace-wide native review storage independent of imported-table ownership.
 - Assignee/filter views across Docs and Data review.
+- Batch triage/promotion for large imported review sets.
+- Explicit archive cleanup/detach controls after native review is resolved or safely relinked.
+- Multi-user review activity, mentions, and permission-aware approvals once server collaboration exists.
 
 ### 4. Deeper Present authoring
 
