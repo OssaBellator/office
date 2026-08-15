@@ -5,7 +5,7 @@ import { getSemanticDocument } from './semanticDocument.ts'
 import { getWorkspaceReviews, workspaceReviewIsOpen } from './workspaceReviews.ts'
 
 export type OfficeExportAssessment={
-  docx:{documentBlocks:number;claims:number;reviews:number;sourceReviewComments:number}
+  docx:{documentBlocks:number;claims:number;reviews:number;sourceReviewComments:number;promotedReviewItems:number;openPromotedReviews:number;detachedPromotedReviews:number}
   pptx:{scenes:number;speakerNotes:number}
   xlsx:{tables:number;formulaCells:number;numberFormatCells:number;hyperlinkCells:number;exportableHyperlinkCells:number;suppressedHyperlinkCells:number;reviewNoteCells:number;reviewThreadCells:number;threadedComments:number;openReviewThreads:number;promotedReviewItems:number;openPromotedReviews:number;booleanCells:number;hiddenTables:number;veryHiddenTables:number;sourceDateSystems:Array<'1900'|'1904'>;suppressedDateLikeFormatCells:number}
   warnings:string[]
@@ -21,8 +21,9 @@ function looksDateLike(format:ImportedNumberFormat){
 
 export function assessOfficeExport(workspace:WorkspaceState):OfficeExportAssessment{
   const semantic=getSemanticDocument(workspace),scenes=buildPresentationScenes(workspace),tables=getImportedTables(workspace),workspaceReviews=getWorkspaceReviews(workspace)
-  const nativeWorkspaceReviews=workspaceReviews.filter((review)=>!review.sourceOnly)
   const sourceReviewComments=workspaceReviews.filter((review)=>review.sourceOnly&&review.sourceReview?.kind==='word-comment').length
+  const wordPromoted=workspaceReviews.filter((review)=>!review.sourceOnly&&review.sourceReview?.kind==='word-comment')
+  const excelPromoted=workspaceReviews.filter((review)=>!review.sourceOnly&&(review.sourceReview?.kind==='excel-note'||review.sourceReview?.kind==='excel-thread'))
   let formulaCells=0,numberFormatCells=0,hyperlinkCells=0,exportableHyperlinkCells=0,suppressedHyperlinkCells=0,reviewNoteCells=0,reviewThreadCells=0,threadedComments=0,openReviewThreads=0,booleanCells=0,hiddenTables=0,veryHiddenTables=0,suppressedDateLikeFormatCells=0
   const sourceDateSystems=new Set<'1900'|'1904'>()
   for(const table of tables){
@@ -44,7 +45,8 @@ export function assessOfficeExport(workspace:WorkspaceState):OfficeExportAssessm
       for(const format of Object.values(table.numberFormatByCell??{}))if(looksDateLike(format))suppressedDateLikeFormatCells+=1
     }
   }
-  const promotedReviewItems=nativeWorkspaceReviews.length,openPromotedReviews=nativeWorkspaceReviews.filter(workspaceReviewIsOpen).length
+  const wordOpen=wordPromoted.filter(workspaceReviewIsOpen).length,wordDetached=wordPromoted.filter((review)=>review.sourceDetached).length
+  const excelOpen=excelPromoted.filter(workspaceReviewIsOpen).length
   const warnings:string[]=[]
   if(formulaCells)warnings.push(`${formulaCells} imported Excel/Sheets formula cell${formulaCells===1?' exports':'s export'} as cached values only; Frame never reactivates foreign spreadsheet formulas implicitly.`)
   if(suppressedDateLikeFormatCells)warnings.push(`${suppressedDateLikeFormatCells} date-like number format${suppressedDateLikeFormatCells===1?' is':'s are'} intentionally omitted from 1904-source cells because this combined workbook also contains 1900-source formatting. Raw serial values remain unchanged.`)
@@ -53,14 +55,15 @@ export function assessOfficeExport(workspace:WorkspaceState):OfficeExportAssessm
   if(suppressedHyperlinkCells)warnings.push(`${suppressedHyperlinkCells} imported external hyperlink${suppressedHyperlinkCells===1?' is':'s are'} preserved in Frame but omitted from XLSX because the target uses a file/custom/unsupported scheme.`)
   if(reviewNoteCells)warnings.push(`${reviewNoteCells} imported Excel cell note${reviewNoteCells===1?' remains':'s remain'} Frame review provenance and ${reviewNoteCells===1?'is':'are'} omitted from the default XLSX compatibility projection until classic-note export is externally validated.`)
   if(reviewThreadCells)warnings.push(`${reviewThreadCells} imported Excel review thread${reviewThreadCells===1?' remains':'s remain'} in Frame (${threadedComments} comment${threadedComments===1?'':'s'}, ${openReviewThreads} open) and ${reviewThreadCells===1?'is':'are'} omitted from the default XLSX projection rather than flattened into legacy notes.`)
-  if(promotedReviewItems)warnings.push(`${promotedReviewItems} native Frame review${promotedReviewItems===1?' remains':'s remain'} in Frame (${openPromotedReviews} open) and ${promotedReviewItems===1?'is':'are'} not embedded into the default Office compatibility projection.`)
-  if(sourceReviewComments)warnings.push(`${sourceReviewComments} imported Word source comment${sourceReviewComments===1?' remains':'s remain'} as Frame provenance and ${sourceReviewComments===1?'is':'are'} not treated as native review work or exported until explicitly promoted.`)
+  if(excelPromoted.length)warnings.push(`${excelPromoted.length} native Frame review${excelPromoted.length===1?' linked':'s linked'} to Excel source review ${excelPromoted.length===1?'remains':'remain'} in Frame (${excelOpen} open) and ${excelPromoted.length===1?'is':'are'} not embedded into the default XLSX compatibility projection.`)
+  if(sourceReviewComments)warnings.push(`${sourceReviewComments} imported Word source comment${sourceReviewComments===1?' remains':'s remain'} as Frame provenance and ${sourceReviewComments===1?'is':'are'} not exported into the default DOCX projection.`)
+  if(wordPromoted.length)warnings.push(`${wordPromoted.length} native Frame review${wordPromoted.length===1?' linked':'s linked'} to Word source comment ${wordPromoted.length===1?'remains':'remain'} in Frame (${wordOpen} open${wordDetached?`, ${wordDetached} detached from current source anchor`:''}) and ${wordPromoted.length===1?'is':'are'} not embedded into the default DOCX projection.`)
   if(hiddenTables||veryHiddenTables)warnings.push(`${hiddenTables+veryHiddenTables} imported worksheet${hiddenTables+veryHiddenTables===1?' retains':'s retain'} source hidden/very-hidden state in XLSX export.`)
   warnings.push('Frame JSON remains the lossless semantic backup; Office files are compatibility projections and do not carry hidden Frame-only manifest metadata by default.')
   return{
-    docx:{documentBlocks:semantic.blocks.length,claims:semantic.claims.length,reviews:semantic.annotations.length,sourceReviewComments},
+    docx:{documentBlocks:semantic.blocks.length,claims:semantic.claims.length,reviews:semantic.annotations.length,sourceReviewComments,promotedReviewItems:wordPromoted.length,openPromotedReviews:wordOpen,detachedPromotedReviews:wordDetached},
     pptx:{scenes:scenes.length,speakerNotes:scenes.filter((scene)=>Boolean(scene.note)).length},
-    xlsx:{tables:2+tables.length,formulaCells,numberFormatCells,hyperlinkCells,exportableHyperlinkCells,suppressedHyperlinkCells,reviewNoteCells,reviewThreadCells,threadedComments,openReviewThreads,promotedReviewItems,openPromotedReviews,booleanCells,hiddenTables,veryHiddenTables,sourceDateSystems:[...sourceDateSystems].sort(),suppressedDateLikeFormatCells},
+    xlsx:{tables:2+tables.length,formulaCells,numberFormatCells,hyperlinkCells,exportableHyperlinkCells,suppressedHyperlinkCells,reviewNoteCells,reviewThreadCells,threadedComments,openReviewThreads,promotedReviewItems:excelPromoted.length,openPromotedReviews:excelOpen,booleanCells,hiddenTables,veryHiddenTables,sourceDateSystems:[...sourceDateSystems].sort(),suppressedDateLikeFormatCells},
     warnings,
   }
 }
