@@ -74,6 +74,12 @@ test('threaded review provenance survives command decoding and appears in search
   assert.deepEqual(item.participants,['Alice Chen','Bob Singh'])
 })
 
+test('runtime codec rejects threaded replies whose parent does not exist in the same cell thread',()=>{
+  const command={type:'data.imported.replace',tables:[importedThreadTable()]}
+  command.tables[0].threadByCell['row:1\u0000arr'].comments[1].parentId='{missing-parent}'
+  assert.throws(()=>deserializeWorkspaceCommand(serializeWorkspaceCommand(command)),/unknown parent/)
+})
+
 test('semantic comparison versions threaded conversation changes separately from cell values',()=>{
   const before=withImportedTables(cloneSeedWorkspace(),[importedThreadTable('Validated against the renewal schedule.')])
   const after=withImportedTables(cloneSeedWorkspace(),[importedThreadTable('Validated with Finance and RevOps.')])
