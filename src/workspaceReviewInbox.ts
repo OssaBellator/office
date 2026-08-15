@@ -28,6 +28,8 @@ export type PromotedWorkspaceReviewItem={
   status:WorkspaceReviewStatus
   source:string
   archived:boolean
+  detached:boolean
+  relinkable:boolean
   actionable:true
 }
 
@@ -72,6 +74,7 @@ export type ImportedWordWorkspaceReviewItem={
   owner:string
   status:'source'
   source:string
+  promotedReviewId?:string
   actionable:false
 }
 
@@ -94,11 +97,12 @@ export function listWorkspaceReviewInbox(workspace:WorkspaceState):WorkspaceRevi
     .map((review):PromotedWorkspaceReviewItem=>{
       const sourceReview=review.sourceReview
       const table=sourceReview&&sourceReview.kind!=='word-comment'?tableById.get(sourceReview.tableId):undefined
-      return{origin:'frame-data',id:review.id,objectId:review.objectId,label:review.label,kind:review.kind,body:review.body,owner:review.owner,status:review.status,source:sourceReview?.source??'Frame',archived:Boolean(table&&archiveLabel(table.label)),actionable:true}
+      const archived=Boolean(table&&archiveLabel(table.label)),detached=Boolean(review.sourceDetached)
+      return{origin:'frame-data',id:review.id,objectId:review.objectId,label:review.label,kind:review.kind,body:review.body,owner:review.owner,status:review.status,source:sourceReview?.source??'Frame',archived,detached,relinkable:archived&&Boolean(sourceReview&&sourceReview.kind!=='word-comment'),actionable:true}
     })
   const wordComments=allWorkspaceReviews
     .filter((review)=>review.sourceOnly&&review.sourceReview?.kind==='word-comment')
-    .map((review):ImportedWordWorkspaceReviewItem=>({origin:'imported-word',id:review.id,objectId:review.objectId,label:review.label,kind:'source-comment',body:review.body,owner:review.owner,status:'source',source:review.sourceReview!.source,actionable:false}))
+    .map((review):ImportedWordWorkspaceReviewItem=>({origin:'imported-word',id:review.id,objectId:review.objectId,label:review.label,kind:'source-comment',body:review.body,owner:review.owner,status:'source',source:review.sourceReview!.source,promotedReviewId:promotedBySource.get(`${review.sourceReview!.source}|${review.sourceReview!.sourceReviewId}`),actionable:false}))
   const threads=getImportedThreadedReviewItems(workspace)
     .filter((item)=>!archiveLabel(item.tableLabel))
     .map((item):ImportedThreadWorkspaceReviewItem=>({
@@ -148,6 +152,7 @@ export function summarizeWorkspaceReviewInbox(workspace:WorkspaceState){
     nativeOpen:documentNative.length+promotedNative.length,
     promotedNativeOpen:promotedNative.length,
     archivedNativeOpen:promotedNative.filter((item)=>item.archived).length,
+    detachedNativeOpen:promotedNative.filter((item)=>item.detached).length,
     importedWordComments:wordComments.length,
     importedSourceNotes:notes.length,
     importedThreads:threads.length,
