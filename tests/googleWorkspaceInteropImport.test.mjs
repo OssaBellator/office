@@ -22,3 +22,16 @@ test('canonical Google Sheets import preserves compact shared-formula dependents
   assert.equal(getImportedTableFormula(table,table.rows[1].id,'arr'),'A3+1')
   assert.equal(plan.warnings.some((warning)=>/shared-formula dependent/.test(warning)),true)
 })
+
+test('direct Google imports reject macro-bearing exported packages before semantic planning',async()=>{
+  const provider={exportFile:async()=>zip({
+    'xl/workbook.xml':'<workbook><sheets><sheet name="Data" sheetId="1" r:id="rId1"/></sheets></workbook>',
+    'xl/_rels/workbook.xml.rels':'<Relationships><Relationship Id="rId1" Target="worksheets/sheet1.xml"/></Relationships>',
+    'xl/worksheets/sheet1.xml':'<worksheet><sheetData><row><c r="A1" t="inlineStr"><is><t>Value</t></is></c></row></sheetData></worksheet>',
+    'xl/vbaProject.bin':'not executed',
+  })}
+  await assert.rejects(
+    ()=>planGoogleWorkspaceInteropImport(cloneSeedWorkspace(),{id:'unsafe',name:'Unsafe workbook',kind:'spreadsheet'},provider),
+    /Office import rejected: VBA part xl\/vbaProject\.bin/,
+  )
+})
