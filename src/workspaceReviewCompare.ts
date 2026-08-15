@@ -37,17 +37,18 @@ export function compareWorkspaceStatesWithReview(before:WorkspaceState,after:Wor
     }
   }
 
-  const leftPromoted=new Map(getWorkspaceReviews(before).map((review)=>[review.id,review])),rightPromoted=new Map(getWorkspaceReviews(after).map((review)=>[review.id,review]))
-  for(const reviewId of new Set([...leftPromoted.keys(),...rightPromoted.keys()])){
-    const l=leftPromoted.get(reviewId),r=rightPromoted.get(reviewId),objectId=r?.objectId??l?.objectId??`review:${reviewId}`,label=r?.label??l?.label??reviewId
-    if(!l||!r){addNativeDiff(diffs,objectId,label,'Frame review',l?JSON.stringify(l):null,r?JSON.stringify(r):null);continue}
-    addNativeDiff(diffs,objectId,label,'Frame review target',l.objectId,r.objectId)
-    addNativeDiff(diffs,objectId,label,'Frame review label',l.label,r.label)
-    addNativeDiff(diffs,objectId,label,'Frame review kind',l.kind,r.kind)
-    addNativeDiff(diffs,objectId,label,'Frame review body',l.body,r.body)
-    addNativeDiff(diffs,objectId,label,'Frame review owner',l.owner,r.owner)
-    addNativeDiff(diffs,objectId,label,'Frame review status',l.status,r.status)
-    addNativeDiff(diffs,objectId,label,'Frame review source',l.sourceReview?JSON.stringify(l.sourceReview):null,r.sourceReview?JSON.stringify(r.sourceReview):null)
+  const leftReviews=new Map(getWorkspaceReviews(before).map((review)=>[review.id,review])),rightReviews=new Map(getWorkspaceReviews(after).map((review)=>[review.id,review]))
+  for(const reviewId of new Set([...leftReviews.keys(),...rightReviews.keys()])){
+    const l=leftReviews.get(reviewId),r=rightReviews.get(reviewId),objectId=r?.objectId??l?.objectId??`review:${reviewId}`,label=r?.label??l?.label??reviewId
+    const sourceOnly=r?.sourceOnly??l?.sourceOnly??false,prefix=sourceOnly?'Source review':'Frame review'
+    if(!l||!r){addNativeDiff(diffs,objectId,label,prefix,l?JSON.stringify(l):null,r?JSON.stringify(r):null);continue}
+    addNativeDiff(diffs,objectId,label,`${prefix} target`,l.objectId,r.objectId)
+    addNativeDiff(diffs,objectId,label,`${prefix} label`,l.label,r.label)
+    addNativeDiff(diffs,objectId,label,`${prefix} kind`,l.kind,r.kind)
+    addNativeDiff(diffs,objectId,label,`${prefix} body`,l.body,r.body)
+    addNativeDiff(diffs,objectId,label,`${prefix} owner`,l.owner,r.owner)
+    addNativeDiff(diffs,objectId,label,`${prefix} status`,l.status,r.status)
+    addNativeDiff(diffs,objectId,label,`${prefix} source`,l.sourceReview?JSON.stringify(l.sourceReview):null,r.sourceReview?JSON.stringify(r.sourceReview):null)
   }
   return diffs
 }
