@@ -1,16 +1,48 @@
+import { tableReviewItems } from './importedDataReview.ts'
 import { getImportedTables, type ImportedDataTable } from './importedTables.ts'
 import type { WorkspaceState } from './model.ts'
 import type { OfficeImportPlan } from './officeImportPlanner.ts'
 import { getPresentationState } from './presentationState.ts'
 import { getSemanticDocument } from './semanticDocument.ts'
 import type { VersionedWorkspaceCommand } from './semanticCommands.ts'
+import type { WorkspaceReviewSource } from './workspaceReviews.ts'
+
+type SourceReviewCell={rowId:string;columnId:string;sourceReviewId:string}
+
+function splitCellKey(key:string){const index=key.indexOf('\u0000');return index<0?null:{rowId:key.slice(0,index),columnId:key.slice(index+1)}}
+function findThreadSourceReview(next:ImportedDataTable,sourceReviewId:string):SourceReviewCell|null{
+  for(const [key,thread] of Object.entries(next.threadByCell??{})){
+    const root=thread.comments.find((comment)=>!comment.parentId)??thread.comments[0]
+    if(root?.id!==sourceReviewId)continue
+    const cell=splitCellKey(key);if(cell)return{...cell,sourceReviewId:root.id}
+  }
+  return null
+}
+function findClassicSourceReview(previous:ImportedDataTable,next:ImportedDataTable,sourceReview:WorkspaceReviewSource):SourceReviewCell|null{
+  const nextItems=tableReviewItems(next)
+  const exact=nextItems.find((item)=>item.sourceReviewId===sourceReview.sourceReviewId)
+  if(exact)return{rowId:exact.rowId,columnId:exact.columnId,sourceReviewId:exact.sourceReviewId}
+
+  const previousItem=tableReviewItems(previous).find((item)=>item.rowId===sourceReview.rowId&&item.columnId===sourceReview.columnId)
+  if(previousItem){
+    const sameContent=nextItems.filter((item)=>item.text===previousItem.text&&(item.author??'')===(previousItem.author??''))
+    if(sameContent.length===1){const item=sameContent[0];return{rowId:item.rowId,columnId:item.columnId,sourceReviewId:item.sourceReviewId}}
+  }
+
+  const oldRowIndex=previous.rows.findIndex((row)=>row.id===sourceReview.rowId),nextRow=oldRowIndex>=0?next.rows[oldRowIndex]:undefined
+  if(nextRow&&next.columns.some((column)=>column.id===sourceReview.columnId))return{rowId:nextRow.id,columnId:sourceReview.columnId,sourceReviewId:sourceReview.sourceReviewId}
+  return null
+}
+function findSourceReviewCell(previous:ImportedDataTable,next:ImportedDataTable,sourceReview:WorkspaceReviewSource){
+  return sourceReview.kind==='excel-thread'?findThreadSourceReview(next,sourceReview.sourceReviewId):findClassicSourceReview(previous,next,sourceReview)
+}
 
 function remapPromotedReviews(previous:ImportedDataTable,next:ImportedDataTable):ImportedDataTable{
   const promotedReviews=(previous.promotedReviews??[]).flatMap((review)=>{
     const sourceReview=review.sourceReview;if(!sourceReview)return[]
-    const oldRowIndex=previous.rows.findIndex((row)=>row.id===sourceReview.rowId),columnExists=next.columns.some((column)=>column.id===sourceReview.columnId),nextRow=oldRowIndex>=0?next.rows[oldRowIndex]:undefined
-    if(!nextRow||!columnExists)return[]
-    return[{...review,objectId:`table:${next.id}:${nextRow.id}`,label:`${next.label} · ${next.columns.find((column)=>column.id===sourceReview.columnId)?.label??sourceReview.columnId}`,sourceReview:{...sourceReview,source:next.source,tableId:next.id,rowId:nextRow.id}}]
+    const match=findSourceReviewCell(previous,next,sourceReview);if(!match)return[]
+    const column=next.columns.find((candidate)=>candidate.id===match.columnId)
+    return[{...review,objectId:`table:${next.id}:${match.rowId}`,label:`${next.label} · ${column?.label??match.columnId}`,sourceReview:{...sourceReview,source:next.source,tableId:next.id,rowId:match.rowId,columnId:match.columnId,sourceReviewId:match.sourceReviewId}}]
   })
   return promotedReviews.length?{...next,promotedReviews}:next
 }
