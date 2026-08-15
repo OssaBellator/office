@@ -1,4 +1,5 @@
 import type { WorkspaceState } from './model.ts'
+import { preserveDocxCommentMetadata } from './docxCommentImport.ts'
 import { planOfficeImport, type OfficeImportPlan } from './officeImportPlanner.ts'
 import { synchronizeOfficeImportPlan } from './officeImportSync.ts'
 import { preserveXlsxCommentMetadata } from './xlsxCommentImport.ts'
@@ -19,7 +20,8 @@ export async function planOfficeInteropImport(
   fileName:string,
 ):Promise<OfficeImportPlan>{
   const parsed=await planOfficeImport(workspace,input,fileName)
-  const withVisibility=await preserveXlsxSheetVisibility(workspace,input,fileName,parsed)
+  const withWordComments=await preserveDocxCommentMetadata(workspace,input,fileName,parsed)
+  const withVisibility=await preserveXlsxSheetVisibility(workspace,input,fileName,withWordComments)
   const withFormats=await preserveXlsxNumberFormatMetadata(workspace,input,fileName,withVisibility)
   const withLinks=await preserveXlsxHyperlinkMetadata(workspace,input,fileName,withFormats)
   const withComments=await preserveXlsxCommentMetadata(workspace,input,fileName,withLinks)
