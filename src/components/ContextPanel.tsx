@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { AlertTriangle, CheckCircle2, Clock3, Database, FileText, MessageSquare, Presentation, ShieldCheck, Table2, X } from 'lucide-react'
 import { formatMetric, getObjectLineage, type SourceRecord, type Surface, type WorkspaceState } from '../model'
 import { getPresentationState } from '../presentationState'
@@ -7,11 +8,15 @@ import type { VersionedWorkspaceCommand } from '../semanticCommands'
 import { getTransactionDiff } from '../revert'
 import { assessWorkspaceReadiness } from '../workspaceDiagnostics'
 import { getDocumentReviewGate } from '../reviewWorkflow'
-import { planPromoteSourceReview, planWorkspaceReviewStatusUpdate } from '../reviewPromotion'
-import { listWorkspaceReviewInbox, summarizeWorkspaceReviewInbox } from '../workspaceReviewInbox'
+import { planWorkspaceReviewStatusUpdate } from '../reviewPromotion'
+import { listWorkspaceReviewInbox, summarizeWorkspaceReviewInbox, type WorkspaceReviewInboxItem } from '../workspaceReviewInbox'
 import { locateWorkspaceObject } from '../workspaceNavigation'
+import { ReviewPromotionDialog } from './ReviewPromotionDialog'
+
+type SourceReviewItem=Extract<WorkspaceReviewInboxItem,{origin:'imported-excel'|'imported-excel-thread'}>
 
 export function ContextPanel({ workspace, surface, transactions, selectedObjectId, onSemanticCommand, onSetSourceStatus, onClose }: { workspace: WorkspaceState; surface: Surface; transactions: VersionedWorkspaceTransaction[]; selectedObjectId?: string | null; onSemanticCommand: (command: VersionedWorkspaceCommand) => void; onSetSourceStatus: (sourceId: string, status: SourceRecord['status']) => void; onClose: () => void }) {
+  const [promotionSourceId,setPromotionSourceId]=useState<string|null>(null)
   const revenue = workspace.metrics.find((metric) => metric.id === 'revenue')!
   const latestEvent = workspace.history[0]
   const connectedCount = workspace.graph.objects.filter((object) => object.surfaces.includes(surface)).length
@@ -26,7 +31,9 @@ export function ContextPanel({ workspace, surface, transactions, selectedObjectI
   const readiness = assessWorkspaceReadiness(workspace)
   const reviewGate = getDocumentReviewGate(workspace)
   const reviewSummary = summarizeWorkspaceReviewInbox(workspace)
-  const reviewInbox = listWorkspaceReviewInbox(workspace).slice(0, 6)
+  const allReviewInbox = listWorkspaceReviewInbox(workspace)
+  const reviewInbox = allReviewInbox.slice(0, 6)
+  const promotionItem=(promotionSourceId?allReviewInbox.find((item)=>item.id===promotionSourceId&&(item.origin==='imported-excel'||item.origin==='imported-excel-thread')):undefined) as SourceReviewItem|undefined
   const sourceReviewCount=reviewSummary.importedSourceNotes+reviewSummary.importedThreads
   const nativeOpenReviews=reviewSummary.nativeOpen
   let focusedLocation = null as ReturnType<typeof locateWorkspaceObject> | null
@@ -46,7 +53,7 @@ export function ContextPanel({ workspace, surface, transactions, selectedObjectI
 
       <div className="context-section"><span className="context-label">Review inbox</span>{reviewInbox.length === 0 ? <div className="history-empty">No open reviews or imported source review</div> : reviewInbox.map((item) => {
         const threaded=item.origin==='imported-excel-thread',documentNative=item.origin==='frame',promotedNative=item.origin==='frame-data',sourceItem=item.origin==='imported-excel'||item.origin==='imported-excel-thread'
-        return <div className="context-review-item" key={item.id}><div><strong>{documentNative||promotedNative?`${item.kind} · ${item.owner}`:`${threaded?'source thread':'source note'} · ${item.owner}`}</strong><span>{item.body}</span>{promotedNative&&<small>{item.label} · promoted from {item.source}</small>}{sourceItem&&<small>{item.label} · {item.source}{threaded?` · ${item.replyCount} repl${item.replyCount===1?'y':'ies'} · ${item.sourceStatus}`:''}</small>}</div>{documentNative?<button onClick={() => onSemanticCommand({ type:'annotation.update', annotationId:item.id, field:'status', value:item.kind === 'approval' ? 'approved' : 'resolved' })}>{item.kind === 'approval' ? 'Approve' : 'Resolve'}</button>:promotedNative?<button onClick={()=>onSemanticCommand(planWorkspaceReviewStatusUpdate(workspace,item.id,item.kind==='approval'?'approved':'resolved'))}>{item.kind==='approval'?'Approve':'Resolve'}</button>:item.promotedReviewId?<button disabled title={`Promoted as ${item.promotedReviewId}`}>Promoted</button>:<button onClick={()=>onSemanticCommand(planPromoteSourceReview(workspace,item.id).command)} title="Create a native Frame task linked back to this immutable source review">Promote</button>}</div>
+        return <div className="context-review-item" key={item.id}><div><strong>{documentNative||promotedNative?`${item.kind} · ${item.owner}`:`${threaded?'source thread':'source note'} · ${item.owner}`}</strong><span>{item.body}</span>{promotedNative&&<small>{item.label} · promoted from {item.source}</small>}{sourceItem&&<small>{item.label} · {item.source}{threaded?` · ${item.replyCount} repl${item.replyCount===1?'y':'ies'} · ${item.sourceStatus}`:''}</small>}</div>{documentNative?<button onClick={() => onSemanticCommand({ type:'annotation.update', annotationId:item.id, field:'status', value:item.kind === 'approval' ? 'approved' : 'resolved' })}>{item.kind === 'approval' ? 'Approve' : 'Resolve'}</button>:promotedNative?<button onClick={()=>onSemanticCommand(planWorkspaceReviewStatusUpdate(workspace,item.id,item.kind==='approval'?'approved':'resolved'))}>{item.kind==='approval'?'Approve':'Resolve'}</button>:item.promotedReviewId?<button disabled title={`Promoted as ${item.promotedReviewId}`}>Promoted</button>:<button onClick={()=>setPromotionSourceId(item.id)} title="Create native Frame review linked back to this immutable source review">Promote</button>}</div>
       })}{reviewGate.warnings.length > 0 && <div className="activity-row"><AlertTriangle size={13} /><div><strong>Follow-up remains</strong><span>{reviewGate.warnings.join(' · ')}</span></div></div>}{sourceReviewCount > 0 && <div className="activity-row"><MessageSquare size={13} /><div><strong>{reviewSummary.importedSourceNotes} source note{reviewSummary.importedSourceNotes === 1 ? '' : 's'} · {reviewSummary.importedThreads} source thread{reviewSummary.importedThreads === 1 ? '' : 's'}</strong><span>{reviewSummary.importedOpenThreads} imported thread{reviewSummary.importedOpenThreads===1?'':'s'} open · {reviewSummary.promotedNativeOpen} promoted Frame review{reviewSummary.promotedNativeOpen===1?'':'s'} open · source provenance does not block readiness until promoted</span></div></div>}</div>
 
       <div className="context-section"><span className="context-label">Workspace semantics</span><div className="activity-row"><ShieldCheck size={14} /><div><strong>{supportedClaims}/{claimStatuses.length} claims supported</strong><span>{attentionClaims ? `${attentionClaims} claim${attentionClaims === 1 ? '' : 's'} stale or contradicted` : 'All grounded claims are currently supported'}</span></div></div><div className="activity-row"><MessageSquare size={14} /><div><strong>{nativeOpenReviews} native review{nativeOpenReviews === 1 ? '' : 's'} open · {sourceReviewCount} source review{sourceReviewCount === 1 ? '' : 's'}</strong><span>{semantic.annotations.length} Docs review records · {reviewSummary.promotedNativeOpen} promoted Data review{reviewSummary.promotedNativeOpen===1?'':'s'} · {reviewSummary.importedThreadComments} imported threaded comment{reviewSummary.importedThreadComments === 1 ? '' : 's'}</span></div></div><div className="activity-row"><Presentation size={14} /><div><strong>{visibleScenes}/{presentation.order.length} scenes visible</strong><span>{overriddenNotes} authored speaker note{overriddenNotes === 1 ? '' : 's'} · chart {chart?.kind === 'line' ? 'line' : 'grouped bars'}</span></div></div></div>
@@ -54,6 +61,7 @@ export function ContextPanel({ workspace, surface, transactions, selectedObjectI
       <div className="context-section"><span className="context-label">Sources & freshness</span><div className="context-source-list">{workspace.sources.map((source) => <div className="context-source-row" key={source.id}><span className={source.status === 'live' ? 'freshness-dot live' : 'freshness-dot stale'} /><div><strong>{source.label}</strong><span>{source.locator} · {source.status}</span></div><button onClick={() => onSetSourceStatus(source.id, source.status === 'live' ? 'stale' : 'live')}>{source.status === 'live' ? 'Mark stale' : 'Mark live'}</button></div>)}</div></div>
       <div className="context-section"><span className="context-label">Semantic history</span><div className="history-list">{transactions.length === 0 ? <div className="history-empty">No structured transactions yet</div> : transactions.slice(-4).reverse().map((transaction) => { const diffs = getTransactionDiff(transaction); return <div className="history-entry" key={transaction.id}><span className="history-marker" /><div><strong>v{transaction.revision} · {transaction.summary}</strong><span>{diffs.length} semantic change{diffs.length === 1 ? '' : 's'} · {transaction.kind}{transaction.kind === 'revert' ? ' revision' : ''}</span></div></div> })}</div></div>
       <div className="context-section"><span className="context-label">Activity</span><div className="activity-row"><Clock3 size={14} /><div><strong>{latestEvent?.summary ?? 'No semantic changes yet'}</strong><span>{latestEvent ? `${latestEvent.affectedObjectIds.length} downstream objects · ${latestEvent.changedAt}` : 'Edits to shared objects will appear here'}</span></div></div><div className="activity-row"><CheckCircle2 size={14} /><div><strong>Version ledger durable</strong><span>Undo, redo, branches and revisions persist locally</span></div></div></div>
+      {promotionItem&&<ReviewPromotionDialog workspace={workspace} sourceItem={promotionItem} onApply={onSemanticCommand} onClose={()=>setPromotionSourceId(null)}/>} 
     </aside>
   )
 }
