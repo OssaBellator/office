@@ -15,7 +15,7 @@ function loadWorkspace(){
   }catch{return createVersionedWorkspaceSession(cloneSeedWorkspace()).present}
 }
 function home(){window.location.assign('/')}
-function download(file:OfficeExportFile){const blob=new Blob([file.bytes],{type:file.mimeType}),url=URL.createObjectURL(blob),anchor=document.createElement('a');anchor.href=url;anchor.download=file.filename;anchor.click();URL.revokeObjectURL(url)}
+function download(file:OfficeExportFile){const blob=new Blob([file.bytes.slice().buffer],{type:file.mimeType}),url=URL.createObjectURL(blob),anchor=document.createElement('a');anchor.href=url;anchor.download=file.filename;anchor.click();URL.revokeObjectURL(url)}
 
 export default function OfficeExportPage(){
   const workspace=useMemo(loadWorkspace,[])
@@ -29,13 +29,13 @@ export default function OfficeExportPage(){
     <section className="office-export-grid">
       <ExportCard icon={FileText} title="Word strategy" filename={files.docx.filename} detail={`${assessment.docx.documentBlocks} semantic blocks · ${assessment.docx.claims} claims · ${assessment.docx.reviews} reviews`} onDownload={()=>download(files.docx)}/>
       <ExportCard icon={Presentation} title="PowerPoint narrative" filename={files.pptx.filename} detail={`${assessment.pptx.scenes} visible scenes · ${assessment.pptx.speakerNotes} speaker notes`} onDownload={()=>download(files.pptx)}/>
-      <ExportCard icon={FileSpreadsheet} title="Excel workbook" filename={files.xlsx.filename} detail={`${assessment.xlsx.tables} sheets · ${assessment.xlsx.formulaCells} cached foreign formulas · ${assessment.xlsx.numberFormatCells} number-format cells`} onDownload={()=>download(files.xlsx)}/>
+      <ExportCard icon={FileSpreadsheet} title="Excel workbook" filename={files.xlsx.filename} detail={`${assessment.xlsx.tables} sheets · ${assessment.xlsx.formulaCells} cached foreign formulas · ${assessment.xlsx.numberFormatCells} number-format cells · ${assessment.xlsx.exportableHyperlinkCells} live links`} onDownload={()=>download(files.xlsx)}/>
     </section>
 
     <section className="office-export-assessment">
       <header><div><CheckCircle2 size={17}/><div><span>EXPORT ASSESSMENT</span><h2>Fidelity decisions are explicit</h2></div></div><small>{assessment.warnings.length} note{assessment.warnings.length===1?'':'s'}</small></header>
       <div className="office-export-facts">
-        <Fact label="Boolean cells" value={assessment.xlsx.booleanCells}/><Fact label="Hidden sheets" value={assessment.xlsx.hiddenTables}/><Fact label="Very hidden sheets" value={assessment.xlsx.veryHiddenTables}/><Fact label="Date systems" value={assessment.xlsx.sourceDateSystems.length?assessment.xlsx.sourceDateSystems.join(' + '):'—'}/><Fact label="Suppressed risky date styles" value={assessment.xlsx.suppressedDateLikeFormatCells}/>
+        <Fact label="Boolean cells" value={assessment.xlsx.booleanCells}/><Fact label="Exportable links" value={assessment.xlsx.exportableHyperlinkCells}/><Fact label="Suppressed links" value={assessment.xlsx.suppressedHyperlinkCells}/><Fact label="Hidden sheets" value={assessment.xlsx.hiddenTables}/><Fact label="Very hidden sheets" value={assessment.xlsx.veryHiddenTables}/><Fact label="Date systems" value={assessment.xlsx.sourceDateSystems.length?assessment.xlsx.sourceDateSystems.join(' + '):'—'}/><Fact label="Suppressed risky date styles" value={assessment.xlsx.suppressedDateLikeFormatCells}/>
       </div>
       <div className="office-export-warning-list">{assessment.warnings.map((warning,index)=><div key={`${index}:${warning}`}><AlertTriangle size={13}/><span>{warning}</span></div>)}</div>
     </section>
