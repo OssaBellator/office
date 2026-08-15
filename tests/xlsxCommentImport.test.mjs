@@ -26,13 +26,13 @@ function commentsWorkbook({threaded=false}={}){
 function noteTable(text='Validate renewal assumption'){
   return{id:'table:pipeline',label:'Pipeline',source:'pipeline.xlsx',importedAt:'now',columns:[{id:'account',label:'Account',type:'text'},{id:'arr',label:'ARR',type:'number'}],rows:[{id:'row:1',values:{account:'Acme',arr:2.4}}],commentByCell:{'row:1\u0000arr':{text,author:'Alice'}}}
 
-test('secure XLSX import preserves classic cell notes with author as review provenance',async()=>{
+test('secure XLSX import preserves classic cell notes with author and source cell as review provenance',async()=>{
   const plan=await planSecureOfficeImport(cloneSeedWorkspace(),commentsWorkbook(),'pipeline.xlsx')
   const replacement=plan.commands.find((command)=>command.type==='data.imported.replace')
   assert.ok(replacement)
   const table=replacement.tables.find((item)=>item.label==='Pipeline')
   assert.ok(table)
-  assert.deepEqual(getImportedTableComment(table,table.rows[0].id,'arr'),{text:'Validate renewal assumption',author:'Alice'})
+  assert.deepEqual(getImportedTableComment(table,table.rows[0].id,'arr'),{text:'Validate renewal assumption',sourceRef:'B2',author:'Alice'})
   assert.equal(plan.warnings.some((warning)=>/classic Excel cell note/.test(warning)),true)
   assert.equal(plan.warnings.some((warning)=>/comments and notes are not imported yet/.test(warning)),false)
 })
