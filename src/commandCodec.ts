@@ -16,7 +16,7 @@ function oneOf<T extends string>(value: unknown, field: string, allowed: readonl
 function array(value: unknown, field: string) { if (!Array.isArray(value)) throw new Error(`${field} must be an array`); return value }
 function timestamp(changedAt: string | undefined) { return changedAt === undefined ? {} : { changedAt } }
 function sceneId(value: unknown, field: string): PresentationSceneId { const result=text(value,field);if(result==='thesis'||result==='performance'||result==='signal'||result==='decision'||result.startsWith('imported:'))return result as PresentationSceneId;throw new Error(`${field} must be a built-in or imported presentation scene id`) }
-function importedCell(value:unknown,field:string):ImportedTableCell{if(value===null||typeof value==='string')return value;if(typeof value==='number'&&Number.isFinite(value))return value;throw new Error(`${field} must be text, a finite number, or null`)}
+function importedCell(value:unknown,field:string):ImportedTableCell{if(value===null||typeof value==='string'||typeof value==='boolean')return value;if(typeof value==='number'&&Number.isFinite(value))return value;throw new Error(`${field} must be text, a finite number, a boolean, or null`)}
 
 function parseMetric(value: unknown): Metric {
   const input=record(value)
@@ -33,7 +33,7 @@ function parseMetric(value: unknown): Metric {
 }
 function parseImportedTable(value:unknown):ImportedDataTable{
   const input=record(value)
-  const columns=array(input.columns,'table.columns').map((item,index)=>{const column=record(item);return{id:text(column.id,`table.columns[${index}].id`),label:text(column.label,`table.columns[${index}].label`),type:oneOf(column.type,`table.columns[${index}].type`,['text','number'] as const)}})
+  const columns=array(input.columns,'table.columns').map((item,index)=>{const column=record(item);return{id:text(column.id,`table.columns[${index}].id`),label:text(column.label,`table.columns[${index}].label`),type:oneOf(column.type,`table.columns[${index}].type`,['text','number','boolean'] as const)}})
   const columnIds=new Set(columns.map((column)=>column.id))
   const rows=array(input.rows,'table.rows').map((item,rowIndex)=>{const row=record(item),values=record(row.values);for(const key of Object.keys(values))if(!columnIds.has(key))throw new Error(`table.rows[${rowIndex}].values contains unknown column ${key}`);return{id:text(row.id,`table.rows[${rowIndex}].id`),values:Object.fromEntries(columns.map((column)=>[column.id,importedCell(values[column.id]??null,`table.rows[${rowIndex}].values.${column.id}`)]))}})
   let formulaByCell:Record<string,string>|undefined
@@ -43,7 +43,8 @@ function parseImportedTable(value:unknown):ImportedDataTable{
     for(const [key,value] of Object.entries(raw)){if(!validKeys.has(key))throw new Error(`table.formulaByCell contains unknown cell ${key}`);formulaByCell[key]=text(value,`table.formulaByCell.${key}`)}
     if(!Object.keys(formulaByCell).length)formulaByCell=undefined
   }
-  return{id:text(input.id,'table.id'),label:text(input.label,'table.label'),source:text(input.source,'table.source'),columns,rows,importedAt:text(input.importedAt,'table.importedAt'),...(formulaByCell?{formulaByCell}:{})}
+  const sourceVisibility=input.sourceVisibility===undefined?undefined:oneOf(input.sourceVisibility,'table.sourceVisibility',['visible','hidden','veryHidden'] as const)
+  return{id:text(input.id,'table.id'),label:text(input.label,'table.label'),source:text(input.source,'table.source'),columns,rows,importedAt:text(input.importedAt,'table.importedAt'),...(formulaByCell?{formulaByCell}:{}),...(sourceVisibility?{sourceVisibility}:{})}
 }
 function parseBlock(value: unknown): SemanticDocumentBlock {
   const input = record(value), id=text(input.id,'block.id'), type=oneOf(input.type,'block.type',['paragraph','claim','metric-embed','decision-embed'] as const)
