@@ -49,6 +49,7 @@ export function compareWorkspaceStatesWithReview(before:WorkspaceState,after:Wor
     addNativeDiff(diffs,objectId,label,`${prefix} owner`,l.owner,r.owner)
     addNativeDiff(diffs,objectId,label,`${prefix} status`,l.status,r.status)
     addNativeDiff(diffs,objectId,label,`${prefix} source`,l.sourceReview?JSON.stringify(l.sourceReview):null,r.sourceReview?JSON.stringify(r.sourceReview):null)
+    addNativeDiff(diffs,objectId,label,`${prefix} source link`,l.sourceDetached?'detached':'linked',r.sourceDetached?'detached':'linked')
   }
   return diffs
 }
