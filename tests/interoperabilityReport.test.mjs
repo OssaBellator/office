@@ -5,9 +5,11 @@ import { withImportedTables } from '../src/importedTables.ts'
 import { cloneSeedWorkspace } from '../src/model.ts'
 import { getPresentationState, withPresentationState } from '../src/presentationState.ts'
 import { getSemanticDocument, withSemanticDocument } from '../src/semanticDocument.ts'
+import { getWorkspaceReviews, withWorkspaceReviews } from '../src/workspaceReviews.ts'
 
 const thread={comments:[{id:'thread:1',personId:'person:alice',author:'Alice',text:'Validate assumption',done:false},{id:'thread:2',personId:'person:bob',author:'Bob',text:'Validated',parentId:'thread:1'}]}
 function promotedReview(tableId='table:x',rowId='row:1',source='model.xlsx'){return{id:'frame-review:test',objectId:`table:${tableId}:${rowId}`,label:'Sheet · Value',kind:'task',body:'Validate assumption',owner:'Finance',status:'open',createdAt:'now',sourceReview:{kind:'excel-note',source,tableId,rowId,columnId:'value',sourceReviewId:`excel-note:${source}:Sheet:B2`}}}
+function wordSourceReview(){return{id:'source-review:word-comment:strategy.docx:7',objectId:'block:interop',label:'Word comment · Imported',kind:'comment',body:'Confirm wording',owner:'Editor',status:'open',createdAt:'source',sourceOnly:true,sourceReview:{kind:'word-comment',source:'strategy.docx',blockId:'block:interop',sourceReviewId:'word-comment:strategy.docx:7'}}}
 
 test('interop warnings are grouped by fidelity concern',()=>{
   const groups=groupInteropWarnings(['Embedded images are not imported','PowerPoint theme geometry changes','Excel formula text is preserved','Tracked revisions are flattened','Classic Excel note preserved','Excel review thread preserved','Actuals: source worksheet is hidden','Workbook uses Excel\'s 1904 date system','1 hyperlink uses a non-web scheme'])
@@ -33,6 +35,7 @@ test('Office import report summarizes command mix and preserved semantic content
   assert.equal(report.preserved.openReviewThreads,1)
   assert.equal(report.preserved.promotedReviewItems,1)
   assert.equal(report.preserved.openPromotedReviews,1)
+  assert.equal(report.preserved.sourceReviewComments,0)
   assert.equal(report.preserved.booleanCells,2)
   assert.equal(report.preserved.hiddenTables,1)
   assert.equal(report.preserved.veryHiddenTables,0)
@@ -42,6 +45,14 @@ test('Office import report summarizes command mix and preserved semantic content
   assert.equal(report.warningGroups.some((group)=>group.kind==='visibility'),true)
   assert.equal(report.warningGroups.some((group)=>group.kind==='formatting'),true)
   assert.equal(report.warningGroups.some((group)=>group.kind==='external-data'),true)
+})
+
+test('DOCX import report counts source-only Word comments separately from native review',()=>{
+  const report=summarizeOfficeImportPlan({kind:'docx',label:'strategy.docx',importedItems:2,warnings:['1 Word comment was preserved as read-only source review provenance.'],commands:[{type:'document.block.insert',block:{id:'block:interop',type:'paragraph',text:'Imported',source:'strategy.docx'}},{type:'review.workspace.replace',reviews:[wordSourceReview()]}]})
+  assert.equal(report.preserved.documentBlocks,1)
+  assert.equal(report.preserved.sourceReviewComments,1)
+  assert.equal(report.preserved.promotedReviewItems,0)
+  assert.equal(report.preserved.openPromotedReviews,0)
 })
 
 test('workspace interop state reports imported provenance and promoted review across Docs Data and Present',()=>{
@@ -54,10 +65,12 @@ test('workspace interop state reports imported provenance and promoted review ac
   workspace=withImportedTables(workspace,[
     {id:'table:interop',label:'Pipeline',source:'model.xlsx',importedAt:'now',sourceVisibility:'veryHidden',sourceDateSystem:'1904',columns:[{id:'arr',label:'ARR',type:'number'},{id:'active',label:'Active',type:'boolean'}],rows:[{id:'row:1',values:{arr:2.4,active:true}}],formulaByCell:{'row:1\u0000arr':'1.2+1.2'},numberFormatByCell:{'row:1\u0000arr':{numFmtId:4}},linkByCell:{'row:1\u0000arr':{kind:'external',target:'file:///legacy.xlsx'}},commentByCell:{'row:1\u0000arr':{text:'Validate renewal assumption',author:'Alice',sourceRef:'A2'}},threadByCell:{'row:1\u0000active':thread},promotedReviews:[review]},
   ])
+  workspace=withWorkspaceReviews(workspace,[...getWorkspaceReviews(workspace),wordSourceReview()])
   const presentation=getPresentationState(workspace)
   workspace=withPresentationState(workspace,{...presentation,importedScenes:[{id:'imported:interop',title:'Imported slide',body:[],source:'board.pptx · imported from PowerPoint / Google Slides export'}],order:[...presentation.order,'imported:interop']})
   const state=describeWorkspaceInteropState(workspace)
   assert.deepEqual(state.importedDocumentSources,['strategy.docx'])
+  assert.equal(state.preservedWordSourceComments,1)
   assert.deepEqual(state.importedTableSources,['model.xlsx'])
   assert.equal(state.preservedFormulaCells,1)
   assert.equal(state.preservedNumberFormatCells,1)
