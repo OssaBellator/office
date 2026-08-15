@@ -21,6 +21,14 @@ test('runtime command codec preserves imported document block provenance', () =>
   assert.deepEqual(deserializeWorkspaceCommand(serializeWorkspaceCommand(command)),{...command,changedAt:undefined})
 })
 
+test('runtime command codec preserves valid imported Excel note source refs',()=>{
+  const command={type:'data.imported.replace',tables:[{id:'table:pipeline',label:'Pipeline',source:'pipeline.xlsx',importedAt:'now',columns:[{id:'arr',label:'ARR',type:'number'}],rows:[{id:'row:1',values:{arr:2.4}}],commentByCell:{'row:1\u0000arr':{text:'Validate renewal',author:'Alice',sourceRef:'B2'}}}]}
+  const parsed=parseWorkspaceCommand(command)
+  assert.equal(parsed.tables[0].commentByCell['row:1\u0000arr'].sourceRef,'B2')
+  assert.deepEqual(deserializeWorkspaceCommand(serializeWorkspaceCommand(command)),{...command,changedAt:undefined})
+  assert.throws(()=>parseWorkspaceCommand({type:'data.imported.replace',tables:[{...command.tables[0],commentByCell:{'row:1\u0000arr':{text:'Validate renewal',sourceRef:'row-two'}}}]}),/sourceRef must be an A1 cell reference/)
+})
+
 test('runtime command codec validates presentation state and speaker-note commands', () => {
   const replace = parseWorkspaceCommand({ type:'presentation.replace', value:{ order:['decision','thesis','performance','signal'], hiddenSceneIds:['signal'], notes:{decision:'Close clearly'} } })
   assert.equal(replace.value.order[0], 'decision')
