@@ -4,6 +4,8 @@ import type { ImportedSheet, ImportedSheetVisibility } from './officeParsers.ts'
 export type ImportedTableCell = string | number | boolean | null
 export type ImportedTableColumn = { id:string; label:string; type:'text'|'number'|'boolean' }
 export type ImportedTableRow = { id:string; values:Record<string,ImportedTableCell> }
+export type ImportedNumberFormat = { numFmtId:number; formatCode?:string }
+export type ImportedDateSystem = '1900'|'1904'
 export type ImportedDataTable = {
   id:string
   label:string
@@ -12,7 +14,9 @@ export type ImportedDataTable = {
   rows:ImportedTableRow[]
   importedAt:string
   formulaByCell?:Record<string,string>
+  numberFormatByCell?:Record<string,ImportedNumberFormat>
   sourceVisibility?:ImportedSheetVisibility
+  sourceDateSystem?:ImportedDateSystem
 }
 
 type ExtendedWorkspaceState = WorkspaceState & { importedTables?: ImportedDataTable[] }
@@ -27,6 +31,7 @@ export function withImportedTables(workspace: WorkspaceState, tables: ImportedDa
 
 export function importedTableCellKey(rowId:string,columnId:string){return`${rowId}\u0000${columnId}`}
 export function getImportedTableFormula(table:ImportedDataTable,rowId:string,columnId:string){return table.formulaByCell?.[importedTableCellKey(rowId,columnId)]}
+export function getImportedTableNumberFormat(table:ImportedDataTable,rowId:string,columnId:string){return table.numberFormatByCell?.[importedTableCellKey(rowId,columnId)]}
 
 function slug(value:string){return value.toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'')||'sheet'}
 function uniqueHeaders(row: ImportedTableCell[]) {
@@ -62,6 +67,8 @@ export function importedTableFromSheet(sheet: ImportedSheet, fileName: string, i
 
 export function importedTableSummary(table: ImportedDataTable) {
   const formulas=Object.keys(table.formulaByCell??{}).length
+  const formats=Object.keys(table.numberFormatByCell??{}).length
   const visibility=table.sourceVisibility&&table.sourceVisibility!=='visible'?` · source ${table.sourceVisibility==='veryHidden'?'very hidden':'hidden'}`:''
-  return `${table.label} · ${table.rows.length} rows × ${table.columns.length} columns${formulas?` · ${formulas} preserved formula${formulas===1?'':'s'}`:''}${visibility}`
+  const dateSystem=table.sourceDateSystem==='1904'?' · 1904 date system':''
+  return `${table.label} · ${table.rows.length} rows × ${table.columns.length} columns${formulas?` · ${formulas} preserved formula${formulas===1?'':'s'}`:''}${formats?` · ${formats} number format${formats===1?'':'s'}`:''}${visibility}${dateSystem}`
 }
