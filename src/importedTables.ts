@@ -6,6 +6,7 @@ export type ImportedTableColumn = { id:string; label:string; type:'text'|'number
 export type ImportedTableRow = { id:string; values:Record<string,ImportedTableCell> }
 export type ImportedNumberFormat = { numFmtId:number; formatCode?:string }
 export type ImportedDateSystem = '1900'|'1904'
+export type ImportedCellLink = { kind:'external'|'internal'; target:string; display?:string; tooltip?:string }
 export type ImportedDataTable = {
   id:string
   label:string
@@ -15,6 +16,7 @@ export type ImportedDataTable = {
   importedAt:string
   formulaByCell?:Record<string,string>
   numberFormatByCell?:Record<string,ImportedNumberFormat>
+  linkByCell?:Record<string,ImportedCellLink>
   sourceVisibility?:ImportedSheetVisibility
   sourceDateSystem?:ImportedDateSystem
 }
@@ -32,6 +34,11 @@ export function withImportedTables(workspace: WorkspaceState, tables: ImportedDa
 export function importedTableCellKey(rowId:string,columnId:string){return`${rowId}\u0000${columnId}`}
 export function getImportedTableFormula(table:ImportedDataTable,rowId:string,columnId:string){return table.formulaByCell?.[importedTableCellKey(rowId,columnId)]}
 export function getImportedTableNumberFormat(table:ImportedDataTable,rowId:string,columnId:string){return table.numberFormatByCell?.[importedTableCellKey(rowId,columnId)]}
+export function getImportedTableLink(table:ImportedDataTable,rowId:string,columnId:string){return table.linkByCell?.[importedTableCellKey(rowId,columnId)]}
+export function isSafeNavigableImportedLink(link:ImportedCellLink){
+  if(link.kind==='internal')return true
+  try{const protocol=new URL(link.target).protocol.toLowerCase();return protocol==='https:'||protocol==='http:'||protocol==='mailto:'}catch{return false}
+}
 
 function slug(value:string){return value.toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'')||'sheet'}
 function uniqueHeaders(row: ImportedTableCell[]) {
@@ -68,7 +75,8 @@ export function importedTableFromSheet(sheet: ImportedSheet, fileName: string, i
 export function importedTableSummary(table: ImportedDataTable) {
   const formulas=Object.keys(table.formulaByCell??{}).length
   const formats=Object.keys(table.numberFormatByCell??{}).length
+  const links=Object.keys(table.linkByCell??{}).length
   const visibility=table.sourceVisibility&&table.sourceVisibility!=='visible'?` · source ${table.sourceVisibility==='veryHidden'?'very hidden':'hidden'}`:''
   const dateSystem=table.sourceDateSystem==='1904'?' · 1904 date system':''
-  return `${table.label} · ${table.rows.length} rows × ${table.columns.length} columns${formulas?` · ${formulas} preserved formula${formulas===1?'':'s'}`:''}${formats?` · ${formats} number format${formats===1?'':'s'}`:''}${visibility}${dateSystem}`
+  return `${table.label} · ${table.rows.length} rows × ${table.columns.length} columns${formulas?` · ${formulas} preserved formula${formulas===1?'':'s'}`:''}${formats?` · ${formats} number format${formats===1?'':'s'}`:''}${links?` · ${links} link${links===1?'':'s'}`:''}${visibility}${dateSystem}`
 }
