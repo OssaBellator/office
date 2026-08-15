@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import { withImportedTables } from '../src/importedTables.ts'
 import { cloneSeedWorkspace } from '../src/model.ts'
 import { createVersionedWorkspaceSession, executeVersionedWorkspaceCommand } from '../src/versioning.ts'
 import { buildWorkspaceSearchIndex, searchWorkspace } from '../src/searchIndex.ts'
@@ -28,6 +29,13 @@ test('workspace search finds imported document blocks by source filename', () =>
   session=executeVersionedWorkspaceCommand(session,{type:'document.block.insert',block:{id:'block:imported-source',type:'paragraph',text:'Imported recommendation',style:'heading-2',source:'board-strategy.docx'}})
   const result=searchWorkspace(session.present,'board strategy docx',{kinds:['block']})[0]
   assert.equal(result.id,'block:imported-source')
+})
+
+test('workspace search finds imported Data by sheet visibility and boolean column provenance',()=>{
+  const workspace=withImportedTables(cloneSeedWorkspace(),[{id:'table:flags',label:'Control flags',source:'model.xlsx',importedAt:'now',sourceVisibility:'veryHidden',columns:[{id:'enabled',label:'Enabled',type:'boolean'}],rows:[{id:'row:1',values:{enabled:true}}]}])
+  const results=searchWorkspace(workspace,'very hidden boolean',{kinds:['table']})
+  assert.equal(results[0].id,'table:table:flags')
+  assert.equal(searchWorkspace(workspace,'true',{kinds:['table']})[0].id,'table:table:flags')
 })
 
 test('workspace search respects surface and kind filters', () => {
