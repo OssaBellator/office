@@ -2,13 +2,18 @@ import { getImportedTables, importedTableCellKey } from './importedTables.ts'
 import type { WorkspaceState } from './model.ts'
 import { compareWorkspaceStates, type WorkspaceVersionDiff } from './workspaceCompare.ts'
 
-function noteMeta(workspace:WorkspaceState,tableId:string,rowId:string,columnId:string){
+function reviewMeta(workspace:WorkspaceState,tableId:string,rowId:string,columnId:string,suffix:string){
   const table=getImportedTables(workspace).find((item)=>item.id===tableId)
   const column=table?.columns.find((item)=>item.id===columnId)
-  return{objectId:`table:${tableId}:${rowId}`,label:table?.label??tableId,field:`${column?.label??columnId} note`}
+  return{objectId:`table:${tableId}:${rowId}`,label:table?.label??tableId,field:`${column?.label??columnId} ${suffix}`}
+}
+function addReviewDiff(diffs:WorkspaceVersionDiff[],workspace:WorkspaceState,tableId:string,rowId:string,columnId:string,suffix:string,beforeValue:string|null,afterValue:string|null){
+  if(beforeValue===afterValue)return
+  const meta=reviewMeta(workspace,tableId,rowId,columnId,suffix)
+  diffs.push({objectId:meta.objectId,label:meta.label,field:meta.field,before:beforeValue,after:afterValue,change:beforeValue===null?'added':afterValue===null?'removed':'changed'})
 }
 
-/** Adds imported Data review/note provenance to the core semantic workspace diff. */
+/** Adds imported Data review provenance to the core semantic workspace diff. */
 export function compareWorkspaceStatesWithReview(before:WorkspaceState,after:WorkspaceState):WorkspaceVersionDiff[]{
   const diffs=[...compareWorkspaceStates(before,after)]
   const beforeTables=getImportedTables(before),afterTables=getImportedTables(after)
@@ -19,11 +24,11 @@ export function compareWorkspaceStatesWithReview(before:WorkspaceState,after:Wor
     const rowIds=new Set([...left.rows.map((row)=>row.id),...right.rows.map((row)=>row.id)])
     const columnIds=new Set([...left.columns.map((column)=>column.id),...right.columns.map((column)=>column.id)])
     for(const rowId of rowIds)for(const columnId of columnIds){
-      const key=importedTableCellKey(rowId,columnId),beforeNote=left.commentByCell?.[key],afterNote=right.commentByCell?.[key]
-      const beforeValue=beforeNote?JSON.stringify(beforeNote):null,afterValue=afterNote?JSON.stringify(afterNote):null
-      if(beforeValue===afterValue)continue
-      const meta=noteMeta(after,tableId,rowId,columnId)
-      diffs.push({objectId:meta.objectId,label:meta.label,field:meta.field,before:beforeValue,after:afterValue,change:beforeValue===null?'added':afterValue===null?'removed':'changed'})
+      const key=importedTableCellKey(rowId,columnId)
+      const beforeNote=left.commentByCell?.[key],afterNote=right.commentByCell?.[key]
+      addReviewDiff(diffs,after,tableId,rowId,columnId,'note',beforeNote?JSON.stringify(beforeNote):null,afterNote?JSON.stringify(afterNote):null)
+      const beforeThread=left.threadByCell?.[key],afterThread=right.threadByCell?.[key]
+      addReviewDiff(diffs,after,tableId,rowId,columnId,'review thread',beforeThread?JSON.stringify(beforeThread):null,afterThread?JSON.stringify(afterThread):null)
     }
   }
   return diffs
