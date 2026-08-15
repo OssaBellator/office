@@ -6,7 +6,8 @@ import {
   type VersionedWorkspaceSession,
 } from '../versioning'
 import { planTransactionRevert } from '../revert'
-import { compareWorkspaceStates, type WorkspaceVersionValue } from '../workspaceCompare'
+import { type WorkspaceVersionValue } from '../workspaceCompare'
+import { compareWorkspaceStatesWithReview } from '../workspaceReviewCompare'
 
 export function HistoryBrowser({
   session,
@@ -34,8 +35,8 @@ export function HistoryBrowser({
   }, [snapshots.length])
 
   const selected = history.find((entry) => entry.transaction.id === selectedId)
-  const selectedDiffs = selected ? compareWorkspaceStates(selected.transaction.before, selected.transaction.after) : []
-  const compareDiffs = snapshots[fromVersion] && snapshots[toVersion] ? compareWorkspaceStates(snapshots[fromVersion].workspace, snapshots[toVersion].workspace) : []
+  const selectedDiffs = selected ? compareWorkspaceStatesWithReview(selected.transaction.before, selected.transaction.after) : []
+  const compareDiffs = snapshots[fromVersion] && snapshots[toVersion] ? compareWorkspaceStatesWithReview(snapshots[fromVersion].workspace, snapshots[toVersion].workspace) : []
   const revertPlan = selected && (selected.status === 'applied' || selected.status === 'current') ? planTransactionRevert(session, selected.transaction.id) : null
 
   return (
@@ -73,7 +74,7 @@ export function HistoryBrowser({
 
               <section className="version-compare">
                 <div className="compare-heading">
-                  <div><strong>Compare versions</strong><span>Inspect semantic differences between any recorded snapshots.</span></div>
+                  <div><strong>Compare versions</strong><span>Inspect semantic differences between any recorded snapshots, including imported review provenance.</span></div>
                   <div className="compare-selects">
                     <select value={fromVersion} onChange={(event) => setFromVersion(Number(event.target.value))}>{snapshots.map((snapshot, index) => <option value={index} key={snapshot.id}>{snapshot.label}</option>)}</select>
                     <span>→</span>
@@ -90,7 +91,7 @@ export function HistoryBrowser({
   )
 }
 
-function DiffList({ title, diffs, compact = false }: { title: string; diffs: ReturnType<typeof compareWorkspaceStates>; compact?: boolean }) {
+function DiffList({ title, diffs, compact = false }: { title: string; diffs: ReturnType<typeof compareWorkspaceStatesWithReview>; compact?: boolean }) {
   return <section className={compact ? 'diff-section compact' : 'diff-section'}><div className="diff-section-title">{title}</div>{diffs.length === 0 ? <div className="diff-empty">No semantic differences.</div> : diffs.map((diff, index) => <div className="version-diff" key={`${diff.objectId}:${diff.field}:${index}`}><div><strong>{diff.label}</strong><span>{diff.field} · {diff.change}</span></div><code>{formatValue(diff.before)}</code><span>→</span><code>{formatValue(diff.after)}</code></div>)}</section>
 }
 function formatValue(value: WorkspaceVersionValue) { if (value === null) return '—'; const text = String(value).replace(/\s+/g, ' ').trim(); return text.length > 90 ? `${text.slice(0, 87)}…` : text }
