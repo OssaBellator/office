@@ -49,7 +49,7 @@ test('promoting a source note creates a native Frame task without mutating sourc
   assert.equal(getImportedTables(session.present)[0].promotedReviews,undefined)
   const inbox=listWorkspaceReviewInbox(session.present)
   assert.equal(inbox.find((item)=>item.origin==='imported-excel').promotedReviewId,promotion.review.id)
-  assert.equal(inbox.some((item)=>item.origin==='frame-data'&&item.id===promotion.review.id),true)
+  assert.equal(inbox.some((item)=>item.origin==='frame-workspace'&&item.id===promotion.review.id),true)
   assert.equal(inbox.some((item)=>item.origin==='imported-excel'&&item.body==='Validate renewal assumption'),true)
 })
 
@@ -81,7 +81,7 @@ test('promoted review resolves independently while source review remains immutab
   const sourceAfter=inbox.find((item)=>item.origin==='imported-excel-thread')
   assert.equal(sourceAfter.promotedReviewId,promotion.review.id)
   assert.equal(sourceAfter.body,'Review renewal')
-  assert.equal(inbox.some((item)=>item.origin==='frame-data'&&item.id===promotion.review.id),false)
+  assert.equal(inbox.some((item)=>item.origin==='frame-workspace'&&item.id===promotion.review.id),false)
 })
 
 test('same source review cannot be promoted twice',()=>{
