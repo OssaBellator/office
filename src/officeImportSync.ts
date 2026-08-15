@@ -5,9 +5,10 @@ import type { OfficeImportPlan } from './officeImportPlanner.ts'
 import { getPresentationState } from './presentationState.ts'
 import { getSemanticDocument } from './semanticDocument.ts'
 import type { VersionedWorkspaceCommand } from './semanticCommands.ts'
-import type { WorkspaceReviewSource } from './workspaceReviews.ts'
+import type { WorkspaceReviewRecord, WorkspaceReviewSource } from './workspaceReviews.ts'
 
 type SourceReviewCell={rowId:string;columnId:string;sourceReviewId:string}
+type ReviewRemapResult={table:ImportedDataTable;unmatched:WorkspaceReviewRecord[]}
 
 function splitCellKey(key:string){const index=key.indexOf('\u0000');return index<0?null:{rowId:key.slice(0,index),columnId:key.slice(index+1)}}
 function findThreadSourceReview(next:ImportedDataTable,sourceReviewId:string):SourceReviewCell|null{
@@ -29,6 +30,8 @@ function findClassicSourceReview(previous:ImportedDataTable,next:ImportedDataTab
     if(sameContent.length===1){const item=sameContent[0];return{rowId:item.rowId,columnId:item.columnId,sourceReviewId:item.sourceReviewId}}
   }
 
+  const previousComment=previous.commentByCell?.[`${sourceReview.rowId}\u0000${sourceReview.columnId}`]
+  if(previousComment?.sourceRef)return null
   const oldRowIndex=previous.rows.findIndex((row)=>row.id===sourceReview.rowId),nextRow=oldRowIndex>=0?next.rows[oldRowIndex]:undefined
   if(nextRow&&next.columns.some((column)=>column.id===sourceReview.columnId))return{rowId:nextRow.id,columnId:sourceReview.columnId,sourceReviewId:sourceReview.sourceReviewId}
   return null
@@ -36,15 +39,22 @@ function findClassicSourceReview(previous:ImportedDataTable,next:ImportedDataTab
 function findSourceReviewCell(previous:ImportedDataTable,next:ImportedDataTable,sourceReview:WorkspaceReviewSource){
   return sourceReview.kind==='excel-thread'?findThreadSourceReview(next,sourceReview.sourceReviewId):findClassicSourceReview(previous,next,sourceReview)
 }
+function reviewArchive(previous:ImportedDataTable,reviews:WorkspaceReviewRecord[]):ImportedDataTable{
+  const suffix=' · review archive',label=previous.label.endsWith(suffix)?previous.label:`${previous.label}${suffix}`
+  return{...structuredClone(previous),label,promotedReviews:structuredClone(reviews)}
+}
 
-function remapPromotedReviews(previous:ImportedDataTable,next:ImportedDataTable):ImportedDataTable{
-  const promotedReviews=(previous.promotedReviews??[]).flatMap((review)=>{
-    const sourceReview=review.sourceReview;if(!sourceReview)return[]
-    const match=findSourceReviewCell(previous,next,sourceReview);if(!match)return[]
+function remapPromotedReviews(previous:ImportedDataTable,next:ImportedDataTable):ReviewRemapResult{
+  const promotedReviews:WorkspaceReviewRecord[]=[],unmatched:WorkspaceReviewRecord[]=[]
+  for(const review of previous.promotedReviews??[]){
+    const sourceReview=review.sourceReview
+    if(!sourceReview){unmatched.push(review);continue}
+    const match=findSourceReviewCell(previous,next,sourceReview)
+    if(!match){unmatched.push(review);continue}
     const column=next.columns.find((candidate)=>candidate.id===match.columnId)
-    return[{...review,objectId:`table:${next.id}:${match.rowId}`,label:`${next.label} · ${column?.label??match.columnId}`,sourceReview:{...sourceReview,source:next.source,tableId:next.id,rowId:match.rowId,columnId:match.columnId,sourceReviewId:match.sourceReviewId}}]
-  })
-  return promotedReviews.length?{...next,promotedReviews}:next
+    promotedReviews.push({...review,objectId:`table:${next.id}:${match.rowId}`,label:`${next.label} · ${column?.label??match.columnId}`,sourceReview:{...sourceReview,source:next.source,tableId:next.id,rowId:match.rowId,columnId:match.columnId,sourceReviewId:match.sourceReviewId}})
+  }
+  return{table:promotedReviews.length?{...next,promotedReviews}:next,unmatched}
 }
 
 function synchronizeImportedTables(workspace:WorkspaceState,commands:VersionedWorkspaceCommand[],fileName:string){
@@ -53,19 +63,30 @@ function synchronizeImportedTables(workspace:WorkspaceState,commands:VersionedWo
   const priorSource=existing.filter((table)=>table.source===fileName)
   const retained=existing.filter((table)=>table.source!==fileName)
   const replacementIndex=commands.findIndex((command)=>command.type==='data.imported.replace')
+  let archivedReviewCount=0
   if(replacementIndex>=0){
     const command=commands[replacementIndex] as Extract<VersionedWorkspaceCommand,{type:'data.imported.replace'}>
+    const remapArchives:ImportedDataTable[]=[]
     const newlyPlanned=command.tables.filter((table)=>!existingIds.has(table.id)).map((table)=>{
       const previous=priorSource.find((item)=>item.label===table.label)
-      return previous?remapPromotedReviews(previous,table):table
+      if(!previous)return table
+      const remapped=remapPromotedReviews(previous,table)
+      if(remapped.unmatched.length){archivedReviewCount+=remapped.unmatched.length;remapArchives.push(reviewArchive(previous,remapped.unmatched))}
+      return remapped.table
     })
     const replacedLabels=new Set(newlyPlanned.map((table)=>table.label))
-    const reviewAnchors=priorSource.filter((table)=>!replacedLabels.has(table.label)&&(table.promotedReviews?.length??0)>0)
-    commands[replacementIndex]={type:'data.imported.replace',tables:[...retained,...newlyPlanned,...reviewAnchors],...(command.changedAt?{changedAt:command.changedAt}:{})}
+    const missingSheetAnchors=priorSource.filter((table)=>!replacedLabels.has(table.label)&&(table.promotedReviews?.length??0)>0).map((table)=>{archivedReviewCount+=table.promotedReviews?.length??0;return reviewArchive(table,table.promotedReviews??[])})
+    commands[replacementIndex]={type:'data.imported.replace',tables:[...retained,...newlyPlanned,...remapArchives,...missingSheetAnchors],...(command.changedAt?{changedAt:command.changedAt}:{})}
   }else if(retained.length!==existing.length){
-    const reviewAnchors=priorSource.filter((table)=>(table.promotedReviews?.length??0)>0)
+    const reviewAnchors=priorSource.filter((table)=>(table.promotedReviews?.length??0)>0).map((table)=>{archivedReviewCount+=table.promotedReviews?.length??0;return reviewArchive(table,table.promotedReviews??[])})
     commands.push({type:'data.imported.replace',tables:[...retained,...reviewAnchors]})
   }
+  return archivedReviewCount
+}
+
+function appendReviewArchiveWarning(plan:OfficeImportPlan,count:number):OfficeImportPlan{
+  if(!count)return plan
+  return{...plan,warnings:[...plan.warnings,`${count} promoted Frame review record${count===1?' could':'s could'} not be safely remapped to refreshed source review and ${count===1?'was':'were'} retained on a review archive table instead of being dropped or guessed.`]}
 }
 
 function synchronizeDocx(workspace:WorkspaceState,plan:OfficeImportPlan,fileName:string):OfficeImportPlan{
@@ -79,8 +100,8 @@ function synchronizeDocx(workspace:WorkspaceState,plan:OfficeImportPlan,fileName
     ...inserts.map((command,index)=>({...command,index:firstIndex+index})),
     ...others,
   ]
-  synchronizeImportedTables(workspace,commands,fileName)
-  return{...plan,commands}
+  const archived=synchronizeImportedTables(workspace,commands,fileName)
+  return appendReviewArchiveWarning({...plan,commands},archived)
 }
 
 function synchronizePptx(workspace:WorkspaceState,plan:OfficeImportPlan,fileName:string):OfficeImportPlan{
@@ -111,6 +132,6 @@ export function synchronizeOfficeImportPlan(workspace:WorkspaceState,plan:Office
   if(plan.kind==='docx')return synchronizeDocx(workspace,plan,fileName)
   if(plan.kind==='pptx')return synchronizePptx(workspace,plan,fileName)
   const commands=[...plan.commands]
-  synchronizeImportedTables(workspace,commands,fileName)
-  return{...plan,commands}
+  const archived=synchronizeImportedTables(workspace,commands,fileName)
+  return appendReviewArchiveWarning({...plan,commands},archived)
 }
