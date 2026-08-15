@@ -13,6 +13,16 @@ test('canonical Office interop pipeline enriches classic notes then threaded Exc
   assert.match(text,/preserveXlsxSharedFormulaMetadata\(input,fileName,withThreads\)/)
 })
 
+test('classic note provenance retains source-cell identity through parser and runtime codec',async()=>{
+  const parser=await source('src/xlsxCommentImport.ts')
+  const codec=await source('src/importedTableCodec.ts')
+  const review=await source('src/importedDataReview.ts')
+  assert.match(parser,/sourceRef:ref/)
+  assert.match(codec,/sourceRef must be an A1 cell reference/)
+  assert.match(review,/classicNoteSourceReviewId/)
+  assert.match(review,/comment\.sourceRef/)
+})
+
 test('semantic history uses the review-aware workspace comparator',async()=>{
   const browser=await source('src/components/HistoryBrowser.tsx')
   const revert=await source('src/revert.ts')
@@ -30,33 +40,41 @@ test('imported Data cells render classic-note and threaded-review provenance',as
   assert.match(text,/MessageSquareText/)
 })
 
-test('Office export preflight exposes Frame-only note and thread counts',async()=>{
+test('Office export preflight exposes source review and promoted native Data review counts',async()=>{
   const assessment=await source('src/officeExportAssessment.ts')
   const page=await source('src/OfficeExportPage.tsx')
   assert.match(assessment,/reviewNoteCells/)
   assert.match(assessment,/reviewThreadCells/)
   assert.match(assessment,/threadedComments/)
+  assert.match(assessment,/promotedReviewItems/)
   assert.match(assessment,/rather than flattened into legacy notes/)
   assert.match(page,/Legacy review notes/)
-  assert.match(page,/Review threads/)
-  assert.match(page,/assessment\.xlsx\.reviewThreadCells/)
+  assert.match(page,/Source review threads/)
+  assert.match(page,/Native Data reviews/)
+  assert.match(page,/assessment\.xlsx\.promotedReviewItems/)
 })
 
-test('runtime imported-table codec owns note and threaded-review validation',async()=>{
+test('runtime imported-table codec owns note threaded-review and promoted-review validation',async()=>{
   const commandCodec=await source('src/commandCodec.ts')
   const tableCodec=await source('src/importedTableCodec.ts')
   assert.match(commandCodec,/parseImportedDataTable/)
   assert.match(tableCodec,/commentByCell/)
   assert.match(tableCodec,/threadByCell/)
+  assert.match(tableCodec,/promotedReviews/)
   assert.match(tableCodec,/parseImportedCellComment/)
   assert.match(tableCodec,/parseReviewThread/)
 })
 
-test('unified Context review inbox distinguishes source notes from source threads',async()=>{
+test('unified Context review inbox supports source provenance promotion into native Data review',async()=>{
   const inbox=await source('src/workspaceReviewInbox.ts')
   const context=await source('src/components/ContextPanel.tsx')
+  const promotion=await source('src/reviewPromotion.ts')
+  const sync=await source('src/officeImportSync.ts')
   assert.match(inbox,/source-thread/)
-  assert.match(inbox,/importedOpenThreads/)
-  assert.match(context,/source thread/)
-  assert.match(context,/importedThreadComments/)
+  assert.match(inbox,/frame-data/)
+  assert.match(context,/planPromoteSourceReview/)
+  assert.match(context,/>Promote</)
+  assert.match(promotion,/sourceReviewId/)
+  assert.match(sync,/findSourceReviewCell/)
+  assert.match(sync,/sameContent/)
 })
