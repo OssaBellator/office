@@ -29,7 +29,7 @@ export function findPromotedSourceReview(workspace:WorkspaceState,sourceItemId:s
 export function planPromoteSourceReview(
   workspace:WorkspaceState,
   sourceItemId:string,
-  options:{kind?:WorkspaceReviewKind;owner?:string;createdAt?:string}={},
+  options:{kind?:WorkspaceReviewKind;owner?:string;body?:string;createdAt?:string}={},
 ):SourceReviewPromotion{
   const source=sourcePromotion(workspace,sourceItemId)
   const tables=getImportedTables(workspace),tableIndex=tables.findIndex((table)=>table.id===source.tableId&&table.source===source.source)
@@ -37,12 +37,14 @@ export function planPromoteSourceReview(
   const existing=findPromotedSourceReview(workspace,sourceItemId)
   if(existing)throw new Error(`Source review is already promoted as ${existing.id}`)
   const kind=options.kind??'task',status:WorkspaceReviewStatus=kind==='approval'?'pending':'open'
+  const body=options.body===undefined?source.body:options.body.trim()
+  if(!body)throw new Error('Promoted Frame review body must not be blank')
   const review:WorkspaceReviewRecord={
     id:promotedReviewId(source.sourceReviewId),
     objectId:`table:${source.tableId}:${source.rowId}`,
     label:source.label,
     kind,
-    body:source.body,
+    body,
     owner:options.owner?.trim()||'Unassigned',
     status,
     createdAt:options.createdAt??'just now',
