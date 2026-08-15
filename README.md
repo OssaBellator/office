@@ -2,20 +2,22 @@
 
 Frame is an experimental productivity workspace that treats documents, data, and presentations as different views over the same structured work.
 
-This repository contains a local-first React prototype plus a testable semantic workspace engine for shared objects, typed data, formulas, evidence lineage, reversible commands, version history, relationships, reusable visuals, semantic document blocks, and authored presentation structure.
+The central product idea is simple: **create information once, then write it, analyse it, present it, review it, and publish it without rebuilding it in separate applications.**
+
+This repository contains a local-first React prototype plus a semantic workspace engine for shared objects, typed data, formulas, evidence lineage, review provenance, reversible commands, version history, relationships, reusable visuals, semantic document blocks, authored presentation structure, and governed Office/Google interoperability.
 
 ## What is implemented
 
 ### Shared workspace
 
 - **Docs, Data, and Present** are purpose-built surfaces over one workspace model.
-- Shared metrics, decisions, sources, claims, typed rows, chart definitions, document blocks, review annotations, and presentation scenes retain identity across surfaces instead of being copied.
+- Shared metrics, decisions, sources, claims, typed rows, chart definitions, document blocks, review records, imported review provenance, and presentation scenes retain identity across surfaces instead of being copied.
 - Local persistence keeps the current workspace and semantic revision session across reloads.
-- **Portable JSON backup/import** preserves state, revision history, abandoned branches, semantic document state, authored presentation state, and schema migration metadata; older workspace-only JSON is accepted and upgraded.
+- **Portable JSON backup/import** preserves state, revision history, abandoned branches, semantic document state, authored presentation state, imported Data fidelity, review provenance, and schema migration metadata; older workspace-only JSON is accepted and upgraded.
 
 ### Frame Docs
 
-The strategy is now an ordered semantic document rather than one body textarea.
+The strategy is an ordered semantic document rather than one body textarea.
 
 Implemented block types:
 
@@ -24,11 +26,11 @@ Implemented block types:
 - **Live metric embed** — renders shared metric objects directly from Data.
 - **Decision embed** — renders a shared decision object rather than copied prose.
 
-Claims can be **supported**, **stale**, or **contradicted**. A claim becomes stale when its cited source is stale, and can become contradicted when its frozen evidence predicate no longer holds—for example when another region overtakes the cited growth leader.
+Claims can be **supported**, **stale**, or **contradicted**. A claim becomes stale when its cited source is stale, and can become contradicted when its frozen evidence predicate no longer holds.
 
 Claims and citations are editable first-class objects. Citation locators remain attached to source/evidence identity, and semantic graph edges expose claim → block and evidence → citation → claim lineage.
 
-Each document block also supports review state:
+Each document block also supports native review state:
 
 - comments
 - tasks
@@ -36,7 +38,7 @@ Each document block also supports review state:
 - owners
 - open/resolved/pending/approved status
 
-Reviews remain attached to block identity when a block moves. Removing a block cleans up attached review state and orphan claim/citation objects. All block, claim, citation, and review mutations participate in preview, undo/redo, history, comparison, backup/import, and conflict-aware revert.
+Reviews remain attached to block identity when a block moves. Removing a block cleans up attached review state and orphan claim/citation objects. Block, claim, citation, and review mutations participate in preview, undo/redo, history, comparison, backup/import, and conflict-aware revert.
 
 Insert controls are available in Docs and through `Cmd/Ctrl + K` slash-style intents:
 
@@ -47,8 +49,6 @@ Insert controls are available in Docs and through `Cmd/Ctrl + K` slash-style int
 /decision
 ```
 
-Legacy document-body edits and append commands remain supported and are mirrored into the first semantic paragraph for compatibility.
-
 ### Frame Data
 
 Three working modes are implemented:
@@ -57,7 +57,7 @@ Three working modes are implemented:
 - **Model** — table schemas, explicit relationships, editable metric formulas, unit validation, upstream lineage, downstream consumers, and shared chart lineage.
 - **Analyse** — a reusable Actual-vs-Plan chart object plus derived narrative insights.
 
-The current typed tables are:
+The core typed tables are:
 
 ```text
 Regions
@@ -71,37 +71,40 @@ Plan
   Revenue  currency
 ```
 
-The model includes an explicit one-to-one relationship:
+The model includes an explicit relationship:
 
 ```text
 Regions.Region ↔ Plan.Region
 ```
 
+Foreign spreadsheet schemas are retained as **Imported Data** instead of being discarded. Imported XLSX/Google Sheets data can preserve typed values, formula provenance, number formats, source date system, hidden/very-hidden sheet state, trusted/inert hyperlinks, classic Excel notes, and modern threaded review conversations.
+
+### Source review → native Frame review
+
+Frame deliberately separates **what an imported source said** from **what the workspace has decided to do about it**.
+
+- Classic Excel notes remain read-only source provenance and retain author, text, and original A1 cell reference when available.
+- Modern threaded Excel comments retain people, comment/reply IDs, parent relationships, timestamps, resolution state, and mentions.
+- Source review is searchable, version-diffed, persisted, fingerprinted, and visible on Data cells and in the Context review inbox.
+- Source review does **not** block workspace readiness by itself.
+- A source note or thread can be explicitly **Promoted** into native Frame review work linked back to the immutable source record.
+- Promoted Data tasks/comments/approvals participate in semantic history, undo/redo, revert, readiness, and export preflight.
+- Re-import remaps promoted review by stable source identity. Ambiguous or missing source review is preserved on an explicit `· review archive` table rather than guessed or dropped.
+- Imported tables with open promoted review work are protected from deletion until that native work is resolved/approved.
+
+See `docs/REVIEW_PROVENANCE.md` for the review/source identity contract.
+
 ### Shared chart authoring
 
 **Actual vs plan by region** is one saved relationship-backed chart definition consumed by both Data Analyse and Present. It is not rebuilt independently by each surface.
 
-The chart supports two representations:
-
-```text
-Grouped bars
-Line
-```
-
-Changing the representation is a semantic `chart.kind` transaction. It exposes a before/after diff and downstream impact, persists in history, supports conflict-aware revert, and immediately updates both Data and Present.
-
-It can be changed directly in Data or through `Cmd/Ctrl + K`:
-
-```text
-set actual vs plan chart to line
-/chart grouped bars
-```
+The chart supports grouped bars and line representations. Changing representation is a semantic `chart.kind` transaction with before/after diff, downstream impact, durable history, conflict-aware revert, and immediate updates in both Data and Present.
 
 ### Semantic formulas and expressions
 
 Meaning-based formulas reference tables and fields rather than cell coordinates.
 
-Supported aggregate formulas include:
+Examples:
 
 ```text
 SUM(Regions.Revenue)
@@ -114,7 +117,7 @@ Supported aggregations are `SUM`, `AVERAGE`, `MIN`, `MAX`, and `COUNT`. Filters 
 
 Composable expressions support grouping, constants, unary signs, `+`, `-`, `*`, and `/` with dimensional validation. The engine tracks semantic dimensions (`currency`, `percent`, `number`) and rejects invalid arithmetic such as adding currency to percent or multiplying currency by currency.
 
-Formula metrics recompute generically after row edits, including when only a `WHERE` dependency changes. For example, changing `Growth` can correctly change `SUM(Regions.Revenue WHERE Growth >= 20)` without touching a revenue cell.
+Formula metrics recompute generically after row edits, including when only a `WHERE` dependency changes.
 
 Current shared calculated metrics include:
 
@@ -124,84 +127,89 @@ Current shared calculated metrics include:
 
 ### Frame Present
 
-Scene content remains live and derived from shared workspace objects, while **story structure is now authored semantic state**.
+Scene content remains live and derived from shared workspace objects, while **story structure is authored semantic state**.
 
-Implemented authoring controls:
+Implemented authoring controls include:
 
-- reorder thesis, performance, signal, and decision scenes
-- hide/show scenes without deleting their semantic identity
+- reorder scenes
+- hide/show scenes without deleting semantic identity
 - edit speaker notes per scene
 - keep generated live notes as the fallback when an override is cleared
 - preserve order, visibility, and note overrides across reloads/backups/version history
 
-The storyboard rail exposes reorder and visibility controls. Hidden scenes remain recoverable. At least one scene must remain visible.
-
-Presentation state participates in semantic compare and conflict-aware revert. The full-screen player automatically consumes the authored visible sequence and note model.
-
-The performance scene renders the same shared Actual-vs-Plan chart definition used in Data Analyse. Player keyboard navigation supports arrows, Space/PageDown, PageUp, Home/End, and Escape.
-
-Typed story commands are also supported:
-
-```text
-hide signal scene
-show signal scene
-move decision scene first
-set performance speaker note to Lead with variance
-```
+Presentation state participates in semantic compare and conflict-aware revert. The full-screen player consumes the authored visible sequence and note model. The performance scene renders the same shared Actual-vs-Plan chart definition used in Data Analyse.
 
 ### Semantic object graph and provenance
 
-- Stable object IDs for documents, document blocks, claims, citations, reviews, metrics, actual rows, plan rows, decisions, sources, chart definitions, and presentation scenes.
-- Upstream/downstream lineage queries.
-- Downstream impact detection for edits.
+- Stable object IDs for documents, blocks, claims, citations, native reviews, metrics, actual rows, plan rows, decisions, sources, chart definitions, and presentation scenes.
+- Upstream/downstream lineage queries and downstream impact detection.
 - Formula changes synchronize derived graph edges.
 - Explicit typed-table relationships are resolved and validated rather than silently joining unmatched rows.
 - Reusable chart definitions materialize through those relationships.
 - Semantic Docs add evidence/citation/review lineage to the same graph.
-- Presentation migration ensures thesis and signal scenes have graph identity and live dependencies.
 - Source/provenance records include live/stale freshness state.
+- Imported spreadsheet provenance participates in workspace fingerprints, history, search, interoperability reporting, and conflict-safe revert.
 
 ### Versioning and history
 
 - Semantic changes are stored as transactions with **UUID-backed identities** plus human revision numbers (`v1`, `v2`, ...).
 - Undo and redo preserve semantic transactions rather than raw UI snapshots.
 - An append-only revision ledger retains abandoned redo branches after branching edits.
-- Full **History browser** shows current/applied/undone/branch revisions.
+- The **History browser** shows current/applied/undone/branch revisions.
 - Any two recorded workspace snapshots can be compared with semantic object/field diffs.
 - Historical transactions can be reverted as a **new revision**.
-- Reverts are conflict-aware and refuse to overwrite semantic document state, chart representation, story structure, formulas, source freshness, or row values that changed again afterward.
-- Old local session formats migrate into the current ledger, including semantic document materialization, presentation authoring state, graph evolution, tables, relationships, chart definitions, and migrated event identities.
+- Reverts are conflict-aware and refuse to overwrite state that changed again afterward.
+- Review-aware comparison includes imported notes, threaded conversations, and promoted native Data review separately from underlying cell values.
 
 ### Universal command surface
 
-`Cmd/Ctrl + K` supports deterministic typed intents in addition to suggested actions. Examples:
+`Cmd/Ctrl + K` supports deterministic typed intents in addition to suggested actions. Mutation intents go through the same semantic preview, validation, undo, and version-history path as direct UI edits.
+
+Examples:
 
 ```text
 set APAC revenue to 10
 update Europe growth 25%
 set APAC plan to 10.5
 set revenue formula to SUM(Regions.Revenue WHERE Growth >= 20)
-
 /paragraph Validate margin before launch.
 /claim
 /metrics
 /decision
-
 set actual vs plan chart to line
 hide signal scene
 move decision scene first
-set performance speaker note to Lead with variance
-
-set strategy title to One connected workspace
 approve decision
 mark finance source stale
 show history
-open slides
 undo
 redo
 ```
 
-Mutation intents go through the same semantic preview, validation, undo, and version-history path as direct UI edits. Invalid formulas and unknown object references are rejected before mutation.
+### Office and Google interoperability
+
+Interoperability is implemented as **semantic import** and **compatibility export**, not as a second internal file model.
+
+Implemented product paths include:
+
+- secure local DOCX/PPTX/XLSX import through bounded OOXML/ZIP inspection;
+- macro/ActiveX rejection;
+- governed semantic preview before Apply;
+- direct read-only Google Drive import for native Docs/Sheets/Slides by exporting to OOXML in memory and routing through the same secure pipeline;
+- DOCX, PPTX, and XLSX compatibility export with explicit preflight assessment;
+- CSV/Markdown compatibility paths and lossless Frame JSON backup;
+- package validation and dedicated local interoperability fixtures/tooling.
+
+Current XLSX fidelity includes typed booleans, hidden/very-hidden sheets, 1900/1904 date-system provenance, formula text beside cached values, safe number-format projection, safe/inert hyperlink handling, classic cell-note provenance, modern threaded-comment provenance, and native promoted Data review accounting.
+
+Normal XLSX export deliberately keeps unsupported review semantics in Frame rather than silently flattening or embedding hidden metadata. The Office export page tells the user what stays behind before download.
+
+Detailed contracts live in:
+
+- `docs/INTEROPERABILITY.md`
+- `docs/INTEROPERABILITY_IMPLEMENTATION_STATUS.md`
+- `docs/INTEROPERABILITY_TESTING.md`
+- `docs/REVIEW_PROVENANCE.md`
 
 ## Run locally
 
@@ -214,109 +222,67 @@ npm run dev
 
 ## Local testing
 
-GitHub Actions is intentionally not used while hosted Actions usage is unavailable. The primary full validation path is local on a developer checkout with dependencies installed.
+GitHub Actions is intentionally not the canonical validation path while hosted Actions usage is unavailable. Run validation on a developer checkout with dependencies installed.
 
 ```bash
 npm test
+npm run test:interop
 npm run test:watch
 npm run typecheck
 npm run verify
 ```
 
-`npm run verify` runs tests, TypeScript validation, and the Vite production build when dependencies are installed.
+- `npm test` runs the complete Node test inventory.
+- `npm run test:interop` runs the focused Office/Google/imported-review interoperability suite.
+- `npm run verify` runs tests, TypeScript validation, and the Vite production build.
 
-The repository now defines **96 test cases** by source inventory. Coverage includes:
+Coverage spans semantic formulas, relationships, charts, semantic Docs, review workflows, versioning/revert, presentation authoring, command/runtime codecs, portable workspace IO, secure Office parsing, Google Drive import, migration/synchronization, package validation, spreadsheet fidelity, source review, native review promotion, and interoperability export policy.
 
-- semantic formulas, filters, dependencies, and typed error cases
-- metric recalculation, including filter-only dependency changes
-- multi-table Actual/Plan modeling and schema migration
-- explicit table relationships and relationship integrity
-- reusable relationship-backed chart definitions
-- versioned chart representation authoring and conflict-aware revert
-- semantic document block migration, editing, insertion, removal, ordering, and legacy-body compatibility
-- explicit claims/citations, support/staleness/contradiction, and evidence graph lineage
-- block comments, tasks, approvals, owners, status, cleanup, preview, and revert
-- semantic presentation state migration, ordering, visibility, note overrides, live content, and revert
-- deterministic slash/typed command parsing and previews
-- reversible semantic sessions, UUID-backed revisions, abandoned branches, arbitrary version comparison, and conflict-aware reverts
-- durable session persistence and migrated event identities
-- source freshness transactions
-- live presentation narrative derivation
-- portable workspace export/import and legacy workspace migration
-
-In the network-restricted implementation environment used for this development pass, the complete historical dependency-backed suite could not be cloned/executed as one checkout. Instead, the newly changed core paths were exercised with strict current-shape TypeScript/runtime harnesses, and the Docs/Data/Present React contracts were separately type-checked with lightweight React/lucide stubs. Those focused verification passes are green; `npm run verify` remains the authoritative full-checkout command.
+The current connector-only implementation environment cannot execute the complete dependency-backed checkout or open generated files in installed Microsoft Office applications. The committed local tests and `npm run verify` remain the authoritative validation gate; manual current-Microsoft-365 smoke testing remains a separate interoperability release gate.
 
 ## Current architecture
 
 ```text
 src/
-  WorkspaceApp.tsx              Workspace shell, persistence, commands, history, backup/import
-  model.ts                      Workspace graph, tables, relationships, charts, metrics, seed data
+  WorkspaceApp.tsx              Workspace shell, persistence, commands, history, transfer entrypoints
+  model.ts                      Workspace graph, typed tables, relationships, metrics, seed data
   formulas.ts                   Typed aggregate formulas and WHERE filters
   expressions.ts                Composable semantic arithmetic
   relationships.ts              Explicit table relationship resolver
   charts.ts                     Relationship-backed chart materialization
   chartModel.ts                 Editable shared chart representation state
-  semanticDocument.ts           Blocks, claims, citations, reviews, evidence state, graph migration
-  presentationState.ts          Story order, visibility, speaker-note overrides, scene migration
+  semanticDocument.ts           Blocks, claims, citations, Docs review, evidence state
   semanticCommands.ts           Versioned structured commands across Docs/Data/Present
   semanticPreview.ts            Pure preview engine for versioned commands
-  commandPreview.ts             Legacy-compatible preview helper
-  intent.ts                     Deterministic Cmd/Ctrl+K and slash intent parser
-  workspaceCompare.ts           Semantic workspace/document/chart/story diff engine
-  versioning.ts                 UUID transactions, revision ledger, migrations, undo/redo, snapshots
+  versioning.ts                 UUID transactions, revision ledger, migrations, undo/redo
   revert.ts                     Conflict-aware revert planning/execution
   sessionStore.ts               Durable session hydration/serialization
-  workspaceIO.ts                Portable JSON backup/import format
-  knowledge.ts                  Derived claims, confidence, freshness, evidence lineage
+  workspaceCompare.ts           Core semantic workspace diff engine
+  workspaceReviewCompare.ts     Review-aware Data/source/native-review comparison
+  workspaceReviews.ts           Native promoted Data review model
+  workspaceReviewInbox.ts       Unified Docs/Data/source review projection
+  reviewPromotion.ts            Source-review → native Frame review planning
+  importedTables.ts             Imported Data + per-cell fidelity/review provenance model
+  importedTableCodec.ts         Runtime validation for imported Data and promoted review
+  officeInteropImport.ts        Canonical secure Office interoperability enrichment pipeline
+  officeImportSync.ts           Source-aware re-import and fail-safe review remapping/archive
+  officeExportAssessment.ts     Compatibility-export fidelity/preflight policy
+  xlsxCommentImport.ts          Classic Excel note provenance
+  xlsxThreadedCommentImport.ts  Modern Excel threaded review provenance
+  presentationState.ts          Story order, visibility, speaker-note overrides
   presentationModel.ts          Live narrative derivation over authored presentation state
 
   components/
-    DocsSurface.tsx             Semantic block editor, grounded claims, reviews, live embeds
-    DataSurface.tsx             Actual/Plan Grid, Model, Analyse, formula/chart authoring
-    RelationshipChart.tsx       Shared grouped-bar/line renderer for Data and Present
-    PresentSurface.tsx          Authored semantic storyboard
-    SemanticScene.tsx           Shared semantic slide renderer
-    PresentationPlayer.tsx      Full-screen authored-sequence player
-    ContextPanel.tsx            Provenance, claim/review/story health, source freshness, history
-    HistoryBrowser.tsx          Version list, compare, conflict-aware revert
-    CommandPalette.tsx          Typed universal commands and preview UI
-
-  styles.css
-  model-view.css
-  history.css
-  history-browser.css
-  present.css
-  presentation-player.css
-  plan-model.css
-  plan-presentation.css
-  semantic-document.css
-  relationship-chart.css
-  presentation-authoring.css
-  command-intent.css
-  local-tools.css
-  main.tsx
-
-tests/
-  chartAuthoring.test.mjs
-  charts.test.mjs
-  expressions.test.mjs
-  formulas.test.mjs
-  intent.test.mjs
-  knowledge.test.mjs
-  model.test.mjs
-  planning.test.mjs
-  presentationAuthoring.test.mjs
-  presentationModel.test.mjs
-  preview.test.mjs
-  relationships.test.mjs
-  semanticDocument.test.mjs
-  semanticPreview.test.mjs
-  sessionStore.test.mjs
-  session-versioning.test.mjs
-  sourceStatus.test.mjs
-  versioning.test.mjs
-  workspaceIO.test.mjs
+    DocsSurface.tsx
+    DataSurface.tsx
+    ImportedTablesPanel.tsx
+    RelationshipChart.tsx
+    PresentSurface.tsx
+    SemanticScene.tsx
+    PresentationPlayer.tsx
+    ContextPanel.tsx
+    HistoryBrowser.tsx
+    CommandPalette.tsx
 ```
 
 ## Product principles encoded in the prototype
@@ -324,15 +290,16 @@ tests/
 1. **Projects before files.** The workspace is the primary unit; document, data, and presentation views live inside it.
 2. **One object, many representations.** Shared concepts and visuals retain identity across surfaces.
 3. **Purpose-built surfaces.** Docs, Data, and Present have different interaction models without becoming separate information silos.
-4. **Meaning before coordinates.** Formulas reference semantic tables and fields rather than accidental cell positions.
+4. **Meaning before coordinates.** Native formulas reference semantic tables and fields rather than accidental cell positions.
 5. **Relationships are explicit.** Cross-table visuals and calculations do not rely on invisible positional joins.
-6. **Evidence is inspectable.** Claims expose their source, evidence object, confidence, freshness, and contradiction state.
-7. **Reviews attach to meaning.** Comments, tasks, and approvals follow semantic block identity rather than screen position.
-8. **Automation is previewable.** Structured actions show semantic changes and downstream impact before application.
-9. **Reversible by default.** Structured changes become undoable, comparable, revertible transactions.
-10. **History is data.** Versions and abandoned branches remain part of the workspace instead of disappearing from an undo stack.
-11. **Story structure and story content are separate.** Presentation order/notes can be authored while scene content remains live.
-12. **Compatibility later, native model first.** DOCX/XLSX/PPTX adapters matter, but the internal model should not inherit their limitations.
+6. **Evidence is inspectable.** Claims expose source, evidence object, confidence, freshness, and contradiction state.
+7. **Reviews attach to meaning.** Native comments/tasks/approvals follow semantic identity; imported review preserves its source identity.
+8. **Provenance is preserved; accountability is explicit.** Importing feedback and deciding what to do about it are related but distinct actions.
+9. **Automation is previewable.** Structured actions show semantic changes and downstream impact before application.
+10. **Reversible by default.** Structured changes become undoable, comparable, revertible transactions.
+11. **History is data.** Versions and abandoned branches remain part of the workspace instead of disappearing from an undo stack.
+12. **Story structure and story content are separate.** Presentation order/notes can be authored while scene content remains live.
+13. **Compatibility is a projection, not the native model.** Office/Google adapters are important, but Frame does not inherit their structural limitations or silently invent fidelity it cannot preserve.
 
 ## Suggested next milestones
 
@@ -352,27 +319,36 @@ tests/
 - Grouped aggregations and richer expression composition.
 - Additional typed tables beyond Actual and Plan.
 
-### 3. Deeper Present authoring
+### 3. Review and collaboration
+
+- Promotion editor for choosing Task / Comment / Approval, owner, and native follow-up text before committing source review into Frame work.
+- User-guided relinking of `· review archive` records to refreshed source cells/threads when automatic re-import matching is intentionally conservative.
+- Workspace-wide native review storage independent of imported-table ownership.
+- Assignee/filter views across Docs and Data review.
+
+### 4. Deeper Present authoring
 
 - Create/delete custom semantic scenes rather than only reordering the canonical scene set.
 - Reusable scene-component palette and constraint-based layouts.
 - Themes/design tokens and per-scene layout variants.
 - Explicit editable source-object bindings for slide components.
 
-### 4. Collaboration and storage
+### 5. Collaboration and storage
 
 - Server-backed workspace persistence and authentication.
 - Permissions and explicit AI/automation capabilities.
 - Realtime multiplayer/CRDT layer.
 - Server-side semantic ledger and merge/conflict model.
 
-### 5. Compatibility adapters
+### 6. Interoperability depth and validation
 
-- DOCX import/export.
-- XLSX import/export.
-- PPTX import/export.
-- PDF/CSV/Markdown export where appropriate.
+- Represent Word comments/revisions as Frame review/version events.
+- Import DOCX/PPTX media into reusable Frame media objects.
+- Convert PowerPoint charts/tables into linked semantic objects.
+- Expand reviewable foreign-formula translation into native Frame formulas.
+- Add meaningful spreadsheet presentation semantics without recreating a formatting-first grid model.
+- Expand current Microsoft 365 / Google Workspace fixture corpus and manual application smoke testing.
 
 ## Status
 
-This is still a focused prototype, not a production office suite. It now validates a broader core thesis: **documents, spreadsheets, presentations, metrics, reviews, relationships, and visuals can remain purpose-built interfaces while operating on the same connected, inspectable, versioned model of work.**
+This is still a focused prototype, not a production office suite. It validates a broader thesis: **documents, spreadsheets, presentations, metrics, reviews, relationships, visuals, and compatibility files can remain purpose-built interfaces while operating on the same connected, inspectable, versioned model of work.**
