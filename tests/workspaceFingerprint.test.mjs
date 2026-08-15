@@ -37,3 +37,13 @@ test('semantic workspace fingerprint changes for imported review-note provenance
   const right=withImportedTables(cloneSeedWorkspace(),[{...table,commentByCell:{'row:1\u0000arr':{text:'Validated with Finance',author:'Alice'}}}])
   assert.notEqual(semanticWorkspaceFingerprint(left),semanticWorkspaceFingerprint(right))
 })
+
+test('semantic workspace fingerprint changes for imported threaded-review replies and resolution state', () => {
+  const table={id:'table:pipeline',label:'Pipeline',source:'pipeline.xlsx',importedAt:'now',columns:[{id:'arr',label:'ARR',type:'number'}],rows:[{id:'row:1',values:{arr:2.4}}]}
+  const root={id:'thread:1',personId:'person:alice',author:'Alice',text:'Validate renewal',done:false}
+  const left=withImportedTables(cloneSeedWorkspace(),[{...table,threadByCell:{'row:1\u0000arr':{comments:[root,{id:'thread:2',personId:'person:bob',author:'Bob',text:'Checking',parentId:'thread:1'}]}}}])
+  const changedReply=withImportedTables(cloneSeedWorkspace(),[{...table,threadByCell:{'row:1\u0000arr':{comments:[root,{id:'thread:2',personId:'person:bob',author:'Bob',text:'Validated',parentId:'thread:1'}]}}}])
+  const resolved=withImportedTables(cloneSeedWorkspace(),[{...table,threadByCell:{'row:1\u0000arr':{comments:[{...root,done:true},{id:'thread:2',personId:'person:bob',author:'Bob',text:'Checking',parentId:'thread:1'}]}}}])
+  assert.notEqual(semanticWorkspaceFingerprint(left),semanticWorkspaceFingerprint(changedReply))
+  assert.notEqual(semanticWorkspaceFingerprint(left),semanticWorkspaceFingerprint(resolved))
+})
