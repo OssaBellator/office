@@ -1,4 +1,5 @@
 import type { ImportedCellComment, ImportedCellLink, ImportedCellReviewThread, ImportedDataTable, ImportedNumberFormat, ImportedTableCell, ImportedThreadedComment, ImportedThreadedMention } from './importedTables.ts'
+import { parseWorkspaceReviewRecord } from './workspaceReviewCodec.ts'
 
 function record(value:unknown,field:string):Record<string,unknown>{if(!value||typeof value!=='object'||Array.isArray(value))throw new Error(`${field} must be a JSON object`);return value as Record<string,unknown>}
 function text(value:unknown,field:string){if(typeof value!=='string')throw new Error(`${field} must be a string`);return value}
@@ -27,11 +28,11 @@ function parseReviewThread(value:unknown,field:string):ImportedCellReviewThread{
 }
 
 export function parseImportedDataTable(value:unknown):ImportedDataTable{
-  const input=record(value,'table')
+  const input=record(value,'table'),tableId=text(input.id,'table.id'),tableLabel=text(input.label,'table.label'),source=text(input.source,'table.source'),importedAt=text(input.importedAt,'table.importedAt')
   const columns=array(input.columns,'table.columns').map((item,index)=>{const column=record(item,`table.columns[${index}]`);return{id:text(column.id,`table.columns[${index}].id`),label:text(column.label,`table.columns[${index}].label`),type:oneOf(column.type,`table.columns[${index}].type`,['text','number','boolean'] as const)}})
   const columnIds=new Set(columns.map((column)=>column.id))
   const rows=array(input.rows,'table.rows').map((item,rowIndex)=>{const row=record(item,`table.rows[${rowIndex}]`),values=record(row.values,`table.rows[${rowIndex}].values`);for(const key of Object.keys(values))if(!columnIds.has(key))throw new Error(`table.rows[${rowIndex}].values contains unknown column ${key}`);return{id:text(row.id,`table.rows[${rowIndex}].id`),values:Object.fromEntries(columns.map((column)=>[column.id,importedCell(values[column.id]??null,`table.rows[${rowIndex}].values.${column.id}`)]))}})
-  const validKeys=new Set(rows.flatMap((row)=>columns.map((column)=>`${row.id}\u0000${column.id}`)))
+  const rowIds=new Set(rows.map((row)=>row.id)),validKeys=new Set(rows.flatMap((row)=>columns.map((column)=>`${row.id}\u0000${column.id}`)))
   const parseCellMap=<T>(rawValue:unknown|undefined,field:string,parser:(value:unknown,field:string)=>T):Record<string,T>|undefined=>{
     if(rawValue===undefined)return undefined
     const raw=record(rawValue,field),parsed:Record<string,T>={}
@@ -43,7 +44,18 @@ export function parseImportedDataTable(value:unknown):ImportedDataTable{
   const linkByCell=parseCellMap(input.linkByCell,'table.linkByCell',parseImportedCellLink)
   const commentByCell=parseCellMap(input.commentByCell,'table.commentByCell',parseImportedCellComment)
   const threadByCell=parseCellMap(input.threadByCell,'table.threadByCell',parseReviewThread)
+  const promotedReviews=input.promotedReviews===undefined?undefined:array(input.promotedReviews,'table.promotedReviews').map(parseWorkspaceReviewRecord)
+  if(promotedReviews){
+    const reviewIds=new Set<string>()
+    for(const review of promotedReviews){
+      if(reviewIds.has(review.id))throw new Error(`table.promotedReviews contains duplicate id ${review.id}`);reviewIds.add(review.id)
+      const sourceReview=review.sourceReview;if(!sourceReview)continue
+      if(sourceReview.tableId!==tableId||sourceReview.source!==source)throw new Error(`Promoted review ${review.id} source must match its imported table`)
+      if(!rowIds.has(sourceReview.rowId)||!columnIds.has(sourceReview.columnId))throw new Error(`Promoted review ${review.id} references an unknown source cell`)
+      if(review.objectId!==`table:${tableId}:${sourceReview.rowId}`)throw new Error(`Promoted review ${review.id} target must match its source Data row`)
+    }
+  }
   const sourceVisibility=input.sourceVisibility===undefined?undefined:oneOf(input.sourceVisibility,'table.sourceVisibility',['visible','hidden','veryHidden'] as const)
   const sourceDateSystem=input.sourceDateSystem===undefined?undefined:oneOf(input.sourceDateSystem,'table.sourceDateSystem',['1900','1904'] as const)
-  return{id:text(input.id,'table.id'),label:text(input.label,'table.label'),source:text(input.source,'table.source'),columns,rows,importedAt:text(input.importedAt,'table.importedAt'),...(formulaByCell?{formulaByCell}:{}),...(numberFormatByCell?{numberFormatByCell}:{}),...(linkByCell?{linkByCell}:{}),...(commentByCell?{commentByCell}:{}),...(threadByCell?{threadByCell}:{}),...(sourceVisibility?{sourceVisibility}:{}),...(sourceDateSystem?{sourceDateSystem}:{})}
+  return{id:tableId,label:tableLabel,source,columns,rows,importedAt,...(formulaByCell?{formulaByCell}:{}),...(numberFormatByCell?{numberFormatByCell}:{}),...(linkByCell?{linkByCell}:{}),...(commentByCell?{commentByCell}:{}),...(threadByCell?{threadByCell}:{}),...(promotedReviews?.length?{promotedReviews}:{}),...(sourceVisibility?{sourceVisibility}:{}),...(sourceDateSystem?{sourceDateSystem}:{})}
 }
