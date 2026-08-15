@@ -78,6 +78,8 @@ export function compareWorkspaceStates(before: WorkspaceState, after: WorkspaceS
         add(diffs,after,`table:${id}:${rowId}`,`${label} formula`,l.formulaByCell?.[cellKey]??null,r.formulaByCell?.[cellKey]??null)
         const leftFormat=l.numberFormatByCell?.[cellKey],rightFormat=r.numberFormatByCell?.[cellKey]
         add(diffs,after,`table:${id}:${rowId}`,`${label} number format`,leftFormat?JSON.stringify(leftFormat):null,rightFormat?JSON.stringify(rightFormat):null)
+        const leftLink=l.linkByCell?.[cellKey],rightLink=r.linkByCell?.[cellKey]
+        add(diffs,after,`table:${id}:${rowId}`,`${label} hyperlink`,leftLink?JSON.stringify(leftLink):null,rightLink?JSON.stringify(rightLink):null)
       }
     }
   }
