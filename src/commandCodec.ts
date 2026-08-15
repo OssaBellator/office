@@ -1,5 +1,5 @@
 import type { Metric } from './model.ts'
-import type { ImportedDataTable, ImportedTableCell, ImportedNumberFormat } from './importedTables.ts'
+import type { ImportedCellLink, ImportedDataTable, ImportedTableCell, ImportedNumberFormat } from './importedTables.ts'
 import type { VersionedWorkspaceCommand } from './semanticCommands.ts'
 import type { BlockAnnotation, SemanticCitation, SemanticClaim, SemanticDocumentBlock, SemanticDocumentState, SemanticParagraphStyle } from './semanticDocument.ts'
 import type { ImportedPresentationScene, PresentationSceneId, PresentationState } from './presentationState.ts'
@@ -37,6 +37,12 @@ function parseImportedNumberFormat(value:unknown,field:string):ImportedNumberFor
   const formatCode=input.formatCode===undefined?undefined:text(input.formatCode,`${field}.formatCode`)
   return{numFmtId,...(formatCode!==undefined?{formatCode}:{})}
 }
+function parseImportedCellLink(value:unknown,field:string):ImportedCellLink{
+  const input=record(value),kind=oneOf(input.kind,`${field}.kind`,['external','internal'] as const),target=text(input.target,`${field}.target`)
+  if(!target.trim())throw new Error(`${field}.target must not be blank`)
+  const display=input.display===undefined?undefined:text(input.display,`${field}.display`),tooltip=input.tooltip===undefined?undefined:text(input.tooltip,`${field}.tooltip`)
+  return{kind,target,...(display!==undefined?{display}:{}),...(tooltip!==undefined?{tooltip}:{})}
+}
 function parseImportedTable(value:unknown):ImportedDataTable{
   const input=record(value)
   const columns=array(input.columns,'table.columns').map((item,index)=>{const column=record(item);return{id:text(column.id,`table.columns[${index}].id`),label:text(column.label,`table.columns[${index}].label`),type:oneOf(column.type,`table.columns[${index}].type`,['text','number','boolean'] as const)}})
@@ -55,9 +61,15 @@ function parseImportedTable(value:unknown):ImportedDataTable{
     for(const [key,value] of Object.entries(raw)){if(!validKeys.has(key))throw new Error(`table.numberFormatByCell contains unknown cell ${key}`);numberFormatByCell[key]=parseImportedNumberFormat(value,`table.numberFormatByCell.${key}`)}
     if(!Object.keys(numberFormatByCell).length)numberFormatByCell=undefined
   }
+  let linkByCell:Record<string,ImportedCellLink>|undefined
+  if(input.linkByCell!==undefined){
+    const raw=record(input.linkByCell);linkByCell={}
+    for(const [key,value] of Object.entries(raw)){if(!validKeys.has(key))throw new Error(`table.linkByCell contains unknown cell ${key}`);linkByCell[key]=parseImportedCellLink(value,`table.linkByCell.${key}`)}
+    if(!Object.keys(linkByCell).length)linkByCell=undefined
+  }
   const sourceVisibility=input.sourceVisibility===undefined?undefined:oneOf(input.sourceVisibility,'table.sourceVisibility',['visible','hidden','veryHidden'] as const)
   const sourceDateSystem=input.sourceDateSystem===undefined?undefined:oneOf(input.sourceDateSystem,'table.sourceDateSystem',['1900','1904'] as const)
-  return{id:text(input.id,'table.id'),label:text(input.label,'table.label'),source:text(input.source,'table.source'),columns,rows,importedAt:text(input.importedAt,'table.importedAt'),...(formulaByCell?{formulaByCell}:{}),...(numberFormatByCell?{numberFormatByCell}:{}),...(sourceVisibility?{sourceVisibility}:{}),...(sourceDateSystem?{sourceDateSystem}:{})}
+  return{id:text(input.id,'table.id'),label:text(input.label,'table.label'),source:text(input.source,'table.source'),columns,rows,importedAt:text(input.importedAt,'table.importedAt'),...(formulaByCell?{formulaByCell}:{}),...(numberFormatByCell?{numberFormatByCell}:{}),...(linkByCell?{linkByCell}:{}),...(sourceVisibility?{sourceVisibility}:{}),...(sourceDateSystem?{sourceDateSystem}:{})}
 }
 function parseBlock(value: unknown): SemanticDocumentBlock {
   const input = record(value), id=text(input.id,'block.id'), type=oneOf(input.type,'block.type',['paragraph','claim','metric-embed','decision-embed'] as const)
