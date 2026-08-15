@@ -7,6 +7,7 @@ import { createStoredZip, exportWorkspaceXlsx } from '../src/officeExport.ts'
 import { planSecureOfficeImport } from '../src/officeSecureImport.ts'
 import { readOfficeXml, readOfficeZip } from '../src/officeArchive.ts'
 import { validateOfficePackage } from '../src/officePackageValidator.ts'
+import { compareWorkspaceStates } from '../src/workspaceCompare.ts'
 import { parseXlsxHyperlinks } from '../src/xlsxHyperlinkImport.ts'
 
 function hyperlinkWorkbook(){
@@ -20,7 +21,7 @@ function hyperlinkWorkbook(){
   })
 }
 
-function linksTable(){return{id:'table:links',label:'Links',source:'links.xlsx',importedAt:'now',columns:[{id:'name',label:'Name',type:'text'},{id:'website',label:'Website',type:'text'},{id:'jump',label:'Jump',type:'text'},{id:'legacy-file',label:'Legacy file',type:'text'}],rows:[{id:'row:1',values:{name:'Acme',website:'Portal',jump:'See assumptions','legacy-file':'Archive'}}],linkByCell:{'row:1\u0000website':{kind:'external',target:'https://example.com/acme?x=1&y=2',display:'Acme portal',tooltip:'Open portal'},'row:1\u0000jump':{kind:'internal',target:'Assumptions!A1'},'row:1\u0000legacy-file':{kind:'external',target:'file:///C:/legacy/report.xlsx'}}}}
+function linksTable(target='https://example.com/acme?x=1&y=2'){return{id:'table:links',label:'Links',source:'links.xlsx',importedAt:'now',columns:[{id:'name',label:'Name',type:'text'},{id:'website',label:'Website',type:'text'},{id:'jump',label:'Jump',type:'text'},{id:'legacy-file',label:'Legacy file',type:'text'}],rows:[{id:'row:1',values:{name:'Acme',website:'Portal',jump:'See assumptions','legacy-file':'Archive'}}],linkByCell:{'row:1\u0000website':{kind:'external',target,display:'Acme portal',tooltip:'Open portal'},'row:1\u0000jump':{kind:'internal',target:'Assumptions!A1'},'row:1\u0000legacy-file':{kind:'external',target:'file:///C:/legacy/report.xlsx'}}}}
 
 test('secure XLSX import preserves safe, internal and inert hyperlink provenance',async()=>{
   const plan=await planSecureOfficeImport(cloneSeedWorkspace(),hyperlinkWorkbook(),'links.xlsx')
@@ -38,6 +39,17 @@ test('secure XLSX import preserves safe, internal and inert hyperlink provenance
 test('hyperlink provenance survives runtime semantic command decoding',()=>{
   const command={type:'data.imported.replace',tables:[linksTable()]}
   assert.deepEqual(deserializeWorkspaceCommand(serializeWorkspaceCommand(command)),command)
+})
+
+test('semantic comparison reports hyperlink target changes independently from cell text',()=>{
+  const before=withImportedTables(cloneSeedWorkspace(),[linksTable('https://example.com/old')])
+  const after=withImportedTables(cloneSeedWorkspace(),[linksTable('https://example.com/new')])
+  const diffs=compareWorkspaceStates(before,after)
+  assert.equal(diffs.some((diff)=>diff.objectId==='table:table:links:row:1'&&diff.field==='Website'&&diff.change==='changed'),false)
+  const linkDiff=diffs.find((diff)=>diff.objectId==='table:table:links:row:1'&&diff.field==='Website hyperlink')
+  assert.ok(linkDiff)
+  assert.match(String(linkDiff.before),/example\.com\/old/)
+  assert.match(String(linkDiff.after),/example\.com\/new/)
 })
 
 test('XLSX export recreates safe external and internal links but leaves file links inert',async()=>{
