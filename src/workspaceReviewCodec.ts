@@ -29,7 +29,10 @@ export function parseWorkspaceReviewRecord(value:unknown):WorkspaceReviewRecord{
   if(kind!=='approval'&&!['open','resolved'].includes(status))throw new Error('Comment/task workspace reviews must be open or resolved')
   const sourceReview=input.sourceReview===undefined?undefined:parseSource(input.sourceReview,'workspaceReview.sourceReview')
   const sourceOnly=input.sourceOnly===undefined?undefined:boolean(input.sourceOnly,'workspaceReview.sourceOnly')
+  const sourceDetached=input.sourceDetached===undefined?undefined:boolean(input.sourceDetached,'workspaceReview.sourceDetached')
   if(sourceOnly&&kind!=='comment')throw new Error('Source-only workspace reviews must use comment kind')
   if(sourceOnly&&!sourceReview)throw new Error('Source-only workspace reviews require source provenance')
-  return{id,objectId,label,kind,body,owner,status,createdAt,...(sourceReview?{sourceReview}:{}),...(sourceOnly!==undefined?{sourceOnly}:{})}
+  if(sourceOnly&&sourceDetached)throw new Error('Source-only provenance cannot itself be detached; detachment applies to native promoted review work')
+  if(sourceDetached&&!sourceReview)throw new Error('Detached workspace reviews require source provenance')
+  return{id,objectId,label,kind,body,owner,status,createdAt,...(sourceReview?{sourceReview}:{}),...(sourceOnly!==undefined?{sourceOnly}:{}),...(sourceDetached!==undefined?{sourceDetached}:{})}
 }
