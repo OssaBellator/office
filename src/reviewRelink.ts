@@ -49,10 +49,10 @@ function locateReview(workspace:WorkspaceState,reviewId:string):LocatedReview{
 function sourceDescriptor(table:ImportedDataTable,sourceReview:WorkspaceReviewSource):SourceDescriptor|null{
   if(sourceReview.kind==='excel-note'){
     const item=tableReviewItems(table).find((candidate)=>candidate.rowId===sourceReview.rowId&&candidate.columnId===sourceReview.columnId)
-    return item?{kind:'excel-note',body:item.text,author:item.author??'Source author',columnLabel:item.columnLabel,tableLabel:item.tableLabel,sourceReviewId:item.sourceReviewId}:null
+    return item?{kind:'excel-note',body:item.text,author:item.author??'Source author',columnLabel:item.columnLabel,tableLabel:item.tableLabel,sourceReviewId:sourceReview.sourceReviewId}:null
   }
   const item=tableThreadedReviewItems(table).find((candidate)=>candidate.rowId===sourceReview.rowId&&candidate.columnId===sourceReview.columnId)
-  return item?{kind:'excel-thread',body:item.root.text,author:item.root.author,columnLabel:item.columnLabel,tableLabel:item.tableLabel,sourceReviewId:item.sourceReviewId}:null
+  return item?{kind:'excel-thread',body:item.root.text,author:item.root.author,columnLabel:item.columnLabel,tableLabel:item.tableLabel,sourceReviewId:sourceReview.sourceReviewId}:null
 }
 
 function candidateScore(candidate:Omit<ReviewRelinkCandidate,'score'|'matchHints'>,source:SourceDescriptor|null){
