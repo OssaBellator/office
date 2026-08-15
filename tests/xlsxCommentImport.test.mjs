@@ -24,7 +24,7 @@ function commentsWorkbook({threaded=false}={}){
 }
 
 function noteTable(text='Validate renewal assumption'){
-  return{id:'table:pipeline',label:'Pipeline',source:'pipeline.xlsx',importedAt:'now',columns:[{id:'account',label:'Account',type:'text'},{id:'arr',label:'ARR',type:'number'}],rows:[{id:'row:1',values:{account:'Acme',arr:2.4}}],commentByCell:{'row:1\u0000arr':{text,author:'Alice'}}}
+  return{id:'table:pipeline',label:'Pipeline',source:'pipeline.xlsx',importedAt:'now',columns:[{id:'account',label:'Account',type:'text'},{id:'arr',label:'ARR',type:'number'}],rows:[{id:'row:1',values:{account:'Acme',arr:2.4}}],commentByCell:{'row:1\u0000arr':{text,author:'Alice',sourceRef:'B2'}}}
 
 test('secure XLSX import preserves classic cell notes with author and source cell as review provenance',async()=>{
   const plan=await planSecureOfficeImport(cloneSeedWorkspace(),commentsWorkbook(),'pipeline.xlsx')
@@ -37,9 +37,11 @@ test('secure XLSX import preserves classic cell notes with author and source cel
   assert.equal(plan.warnings.some((warning)=>/comments and notes are not imported yet/.test(warning)),false)
 })
 
-test('classic note provenance survives command decoding and semantic search',()=>{
+test('classic note source-cell provenance survives command decoding and semantic search',()=>{
   const command={type:'data.imported.replace',tables:[noteTable()]}
-  assert.deepEqual(deserializeWorkspaceCommand(serializeWorkspaceCommand(command)),command)
+  const decoded=deserializeWorkspaceCommand(serializeWorkspaceCommand(command))
+  assert.deepEqual(decoded,command)
+  assert.equal(decoded.tables[0].commentByCell['row:1\u0000arr'].sourceRef,'B2')
   const workspace=withImportedTables(cloneSeedWorkspace(),[noteTable()])
   assert.equal(searchWorkspace(workspace,'Alice renewal assumption',{kinds:['table']})[0].id,'table:table:pipeline')
 })
