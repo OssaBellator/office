@@ -4,13 +4,18 @@ import { getImportedDataReviewItems, summarizeImportedDataReview, tableReviewIte
 import { withImportedTables } from '../src/importedTables.ts'
 import { cloneSeedWorkspace } from '../src/model.ts'
 
-function table(){return{id:'table:pipeline',label:'Pipeline',source:'pipeline.xlsx',importedAt:'now',columns:[{id:'account',label:'Account',type:'text'},{id:'arr',label:'ARR',type:'number'}],rows:[{id:'row:1',values:{account:'Acme',arr:2.4}},{id:'row:2',values:{account:'Nova',arr:1.1}}],commentByCell:{'row:1\u0000arr':{text:'Validate renewal assumption',author:'Alice'},'row:2\u0000account':{text:'Confirm legal entity',author:'Bob'}}}}
+function table(){return{id:'table:pipeline',label:'Pipeline',source:'pipeline.xlsx',importedAt:'now',columns:[{id:'account',label:'Account',type:'text'},{id:'arr',label:'ARR',type:'number'}],rows:[{id:'row:1',values:{account:'Acme',arr:2.4}},{id:'row:2',values:{account:'Nova',arr:1.1}}],commentByCell:{'row:1\u0000arr':{text:'Validate renewal assumption',author:'Alice',sourceRef:'B2'},'row:2\u0000account':{text:'Confirm legal entity',author:'Bob',sourceRef:'A3'}}}}
 
-test('imported cell notes expose review items with stable source identity and cell context',()=>{
+test('imported cell notes expose review items with source-cell identity and cell context',()=>{
   const items=tableReviewItems(table())
   assert.equal(items.length,2)
-  assert.deepEqual(items[0],{id:'review:table:pipeline:row:1:arr',sourceReviewId:'excel-note:pipeline.xlsx:Pipeline:1:arr',tableId:'table:pipeline',tableLabel:'Pipeline',source:'pipeline.xlsx',rowId:'row:1',columnId:'arr',columnLabel:'ARR',value:2.4,author:'Alice',text:'Validate renewal assumption'})
-  assert.equal(items[1].sourceReviewId,'excel-note:pipeline.xlsx:Pipeline:2:account')
+  assert.deepEqual(items[0],{id:'review:table:pipeline:row:1:arr',sourceReviewId:'excel-note:pipeline.xlsx:Pipeline:B2',tableId:'table:pipeline',tableLabel:'Pipeline',source:'pipeline.xlsx',rowId:'row:1',columnId:'arr',columnLabel:'ARR',value:2.4,author:'Alice',text:'Validate renewal assumption'})
+  assert.equal(items[1].sourceReviewId,'excel-note:pipeline.xlsx:Pipeline:A3')
+})
+
+test('legacy note provenance without a source ref retains deterministic positional identity',()=>{
+  const legacy=table();delete legacy.commentByCell['row:1\u0000arr'].sourceRef
+  assert.equal(tableReviewItems(legacy)[0].sourceReviewId,'excel-note:pipeline.xlsx:Pipeline:1:arr')
 })
 
 test('workspace review summary groups note provenance by source author and table',()=>{
