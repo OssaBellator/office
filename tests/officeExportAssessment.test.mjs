@@ -5,7 +5,7 @@ import { cloneSeedWorkspace } from '../src/model.ts'
 import { assessOfficeExport } from '../src/officeExportAssessment.ts'
 import { getWorkspaceReviews, withWorkspaceReviews } from '../src/workspaceReviews.ts'
 
-test('Office export assessment counts preserved spreadsheet fidelity and native Data review',()=>{
+test('Office export assessment counts preserved spreadsheet fidelity and native Excel review',()=>{
   let workspace=cloneSeedWorkspace()
   workspace=withImportedTables(workspace,[{id:'table:flags',label:'Flags',source:'model.xlsx',importedAt:'now',sourceVisibility:'hidden',sourceDateSystem:'1900',columns:[{id:'enabled',label:'Enabled',type:'boolean'},{id:'ratio',label:'Ratio',type:'number'}],rows:[{id:'row:1',values:{enabled:true,ratio:.42}}],formulaByCell:{'row:1\u0000ratio':'21/50'},numberFormatByCell:{'row:1\u0000ratio':{numFmtId:10}},linkByCell:{'row:1\u0000ratio':{kind:'external',target:'https://example.com/model'}},commentByCell:{'row:1\u0000ratio':{text:'Validate margin assumption',author:'Alice',sourceRef:'B2'}},threadByCell:{'row:1\u0000enabled':{comments:[{id:'thread:1',personId:'person:alice',author:'Alice',text:'Review control',done:false},{id:'thread:2',personId:'person:bob',author:'Bob',text:'Reviewed',parentId:'thread:1'}]}},promotedReviews:[{id:'frame-review:margin',objectId:'table:table:flags:row:1',label:'Flags · Ratio',kind:'task',body:'Validate margin assumption',owner:'Finance',status:'open',createdAt:'now',sourceReview:{kind:'excel-note',source:'model.xlsx',tableId:'table:flags',rowId:'row:1',columnId:'ratio',sourceReviewId:'excel-note:model.xlsx:Flags:B2'}}]}])
   const assessment=assessOfficeExport(workspace)
@@ -22,24 +22,31 @@ test('Office export assessment counts preserved spreadsheet fidelity and native 
   assert.equal(assessment.xlsx.promotedReviewItems,1)
   assert.equal(assessment.xlsx.openPromotedReviews,1)
   assert.equal(assessment.docx.sourceReviewComments,0)
+  assert.equal(assessment.docx.promotedReviewItems,0)
   assert.equal(assessment.xlsx.booleanCells,1)
   assert.equal(assessment.xlsx.hiddenTables,1)
   assert.equal(assessment.warnings.some((warning)=>/cached values only/.test(warning)),true)
   assert.equal(assessment.warnings.some((warning)=>/projected back into XLSX/.test(warning)),true)
   assert.equal(assessment.warnings.some((warning)=>/Frame review provenance/.test(warning)),true)
   assert.equal(assessment.warnings.some((warning)=>/omitted from the default XLSX projection rather than flattened into legacy notes/.test(warning)),true)
-  assert.equal(assessment.warnings.some((warning)=>/native Frame review/.test(warning)),true)
+  assert.equal(assessment.warnings.some((warning)=>/linked to Excel source review/.test(warning)),true)
 })
 
-test('Word source comments stay separate from native review counts and export warnings',()=>{
+test('Word source and promoted review stay in DOCX assessment rather than Excel counts',()=>{
   let workspace=cloneSeedWorkspace()
   const sourceReview={id:'source-review:word-comment:strategy.docx:7',objectId:'block:business-snapshot',label:'Word comment · Snapshot',kind:'comment',body:'Confirm wording',owner:'Editor',status:'open',createdAt:'source',sourceOnly:true,sourceReview:{kind:'word-comment',source:'strategy.docx',blockId:'block:business-snapshot',sourceReviewId:'word-comment:strategy.docx:7'}}
-  workspace=withWorkspaceReviews(workspace,[...getWorkspaceReviews(workspace),sourceReview])
+  const promoted={id:'frame-review:word-comment:strategy.docx:7',objectId:'document:strategy',label:'Strategy document · detached source review',kind:'task',body:'Confirm wording before board send',owner:'Legal',status:'open',createdAt:'now',sourceDetached:true,sourceReview:{kind:'word-comment',source:'strategy.docx',blockId:'block:business-snapshot',sourceReviewId:'word-comment:strategy.docx:7'}}
+  workspace=withWorkspaceReviews(workspace,[...getWorkspaceReviews(workspace),sourceReview,promoted])
   const assessment=assessOfficeExport(workspace)
   assert.equal(assessment.docx.sourceReviewComments,1)
+  assert.equal(assessment.docx.promotedReviewItems,1)
+  assert.equal(assessment.docx.openPromotedReviews,1)
+  assert.equal(assessment.docx.detachedPromotedReviews,1)
   assert.equal(assessment.xlsx.promotedReviewItems,0)
   assert.equal(assessment.xlsx.openPromotedReviews,0)
   assert.equal(assessment.warnings.some((warning)=>/imported Word source comment/.test(warning)),true)
+  assert.equal(assessment.warnings.some((warning)=>/linked to Word source comment/.test(warning)),true)
+  assert.equal(assessment.warnings.some((warning)=>/detached from current source anchor/.test(warning)),true)
 })
 
 test('Office export assessment distinguishes inert external hyperlinks from exportable links',()=>{
