@@ -35,10 +35,12 @@ import {
   type SemanticDocumentBlock,
   type SemanticDocumentState,
 } from './semanticDocument.ts'
+import { getWorkspaceReviews, withWorkspaceReviews, type WorkspaceReviewRecord } from './workspaceReviews.ts'
 
 export type VersionedWorkspaceCommand =
   | WorkspaceCommand
   | { type: 'data.imported.replace'; tables: ImportedDataTable[]; changedAt?: string }
+  | { type: 'review.workspace.replace'; reviews: WorkspaceReviewRecord[]; changedAt?: string }
   | { type: 'document.update'; field: keyof WorkspaceState['document']; value: string; changedAt?: string }
   | { type: 'document.semantic.replace'; value: SemanticDocumentState; changedAt?: string }
   | { type: 'document.block.update'; blockId: string; text: string; changedAt?: string }
@@ -163,7 +165,12 @@ export function runVersionedCommand(workspace: WorkspaceState, command: Versione
   switch (command.type) {
     case 'region.update': return updateRegionField(workspace, command.regionId, command.field, command.value, command.changedAt)
     case 'plan.update': return updatePlanField(workspace, command.planId, command.field, command.value, command.changedAt)
-    case 'data.imported.replace': return directMutation(workspace, 'Imported spreadsheet tables updated', command.changedAt ?? 'just now', ['data:imported'], withImportedTables(workspace, command.tables))
+    case 'data.imported.replace': {
+      let next=withImportedTables(workspace,command.tables)
+      if(command.tables.some((table)=>table.promotedReviews!==undefined))next=withWorkspaceReviews(next,command.tables.flatMap((table)=>table.promotedReviews??[]))
+      return directMutation(workspace,'Imported spreadsheet tables updated',command.changedAt??'just now',['data:imported'],next)
+    }
+    case 'review.workspace.replace': return directMutation(workspace,'Native workspace review updated',command.changedAt??'just now',command.reviews.map((review)=>review.id),withWorkspaceReviews(workspace,command.reviews))
     case 'decision.status': return setDecisionStatus(workspace, command.decisionId, command.status, command.changedAt)
     case 'document.append': {
       const appended = appendDocumentText(workspace, command.text, command.changedAt)
@@ -317,6 +324,7 @@ export function versionedCommandIsNoop(workspace: WorkspaceState, command: Versi
     case 'region.update': return workspace.regions.find((row) => row.id === command.regionId)?.[command.field] === command.value
     case 'plan.update': return workspace.plans.find((row) => row.id === command.planId)?.[command.field] === command.value
     case 'data.imported.replace': return JSON.stringify(getImportedTables(workspace)) === JSON.stringify(command.tables)
+    case 'review.workspace.replace': return JSON.stringify(getWorkspaceReviews(workspace))===JSON.stringify(command.reviews)
     case 'decision.status': return workspace.decisions.find((decision) => decision.id === command.decisionId)?.status === command.status
     case 'document.append': return command.text.trim().length === 0
     case 'document.update': return workspace.document[command.field] === command.value
