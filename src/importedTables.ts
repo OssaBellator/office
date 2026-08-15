@@ -1,8 +1,8 @@
 import type { WorkspaceState } from './model.ts'
-import type { ImportedSheet } from './officeParsers.ts'
+import type { ImportedSheet, ImportedSheetVisibility } from './officeParsers.ts'
 
-export type ImportedTableCell = string | number | null
-export type ImportedTableColumn = { id:string; label:string; type:'text'|'number' }
+export type ImportedTableCell = string | number | boolean | null
+export type ImportedTableColumn = { id:string; label:string; type:'text'|'number'|'boolean' }
 export type ImportedTableRow = { id:string; values:Record<string,ImportedTableCell> }
 export type ImportedDataTable = {
   id:string
@@ -12,6 +12,7 @@ export type ImportedDataTable = {
   rows:ImportedTableRow[]
   importedAt:string
   formulaByCell?:Record<string,string>
+  sourceVisibility?:ImportedSheetVisibility
 }
 
 type ExtendedWorkspaceState = WorkspaceState & { importedTables?: ImportedDataTable[] }
@@ -38,7 +39,9 @@ function uniqueHeaders(row: ImportedTableCell[]) {
 }
 function inferType(values:ImportedTableCell[]):ImportedTableColumn['type']{
   const present=values.filter((value)=>value!==null&&String(value).trim()!=='')
-  return present.length>0&&present.every((value)=>typeof value==='number')?'number':'text'
+  if(present.length>0&&present.every((value)=>typeof value==='number'))return'number'
+  if(present.length>0&&present.every((value)=>typeof value==='boolean'))return'boolean'
+  return'text'
 }
 
 export function importedTableFromSheet(sheet: ImportedSheet, fileName: string, idSuffix: string): ImportedDataTable | null {
@@ -54,10 +57,11 @@ export function importedTableFromSheet(sheet: ImportedSheet, fileName: string, i
   const formulaEntries:Array<[string,string]>=[]
   data.forEach(({sourceIndex},rowIndex)=>columns.forEach((column,columnIndex)=>{const formula=sheet.formulas?.[sourceIndex]?.[columnIndex]?.trim();if(formula)formulaEntries.push([importedTableCellKey(rows[rowIndex].id,column.id),formula])}))
   const formulaByCell=formulaEntries.length?Object.fromEntries(formulaEntries):undefined
-  return {id:`imported:${slug(fileName)}:${slug(sheet.name)}:${idSuffix}`,label:sheet.name,source:fileName,columns,rows,importedAt:'just now',...(formulaByCell?{formulaByCell}:{})}
+  return {id:`imported:${slug(fileName)}:${slug(sheet.name)}:${idSuffix}`,label:sheet.name,source:fileName,columns,rows,importedAt:'just now',...(formulaByCell?{formulaByCell}:{}),...(sheet.visibility?{sourceVisibility:sheet.visibility}:{})}
 }
 
 export function importedTableSummary(table: ImportedDataTable) {
   const formulas=Object.keys(table.formulaByCell??{}).length
-  return `${table.label} · ${table.rows.length} rows × ${table.columns.length} columns${formulas?` · ${formulas} preserved formula${formulas===1?'':'s'}`:''}`
+  const visibility=table.sourceVisibility&&table.sourceVisibility!=='visible'?` · source ${table.sourceVisibility==='veryHidden'?'very hidden':'hidden'}`:''
+  return `${table.label} · ${table.rows.length} rows × ${table.columns.length} columns${formulas?` · ${formulas} preserved formula${formulas===1?'':'s'}`:''}${visibility}`
 }
