@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { deserializeWorkspaceCommand, serializeWorkspaceCommand } from '../src/commandCodec.ts'
-import { withImportedTables } from '../src/importedTables.ts'
+import { getImportedTables, withImportedTables } from '../src/importedTables.ts'
 import { cloneSeedWorkspace } from '../src/model.ts'
 import { synchronizeOfficeImportPlan } from '../src/officeImportSync.ts'
 import { planPromoteSourceReview, planWorkspaceReviewStatusUpdate } from '../src/reviewPromotion.ts'
@@ -16,9 +16,16 @@ function sourceTable(id='table:old',rowId='row:old:1'){
 function movedSourceTable(){
   return{id:'table:new',label:'Pipeline',source:'pipeline.xlsx',importedAt:'later',columns:[{id:'arr',label:'ARR',type:'number'}],rows:[{id:'row:new:1',values:{arr:1.1}},{id:'row:new:2',values:{arr:2.4}}],commentByCell:{'row:new:2\u0000arr':{text:'Validate renewal assumption',author:'Alice',sourceRef:'B3'}},threadByCell:{'row:new:2\u0000arr':{comments:[{id:'thread-root',personId:'person:alice',author:'Alice',text:'Review renewal',done:false},{id:'thread-reply',personId:'person:bob',author:'Bob',text:'Checking',parentId:'thread-root'}]}}}
 }
+function sameCellDifferentFrameRow(){
+  return{id:'table:stable-cell',label:'Pipeline',source:'pipeline.xlsx',importedAt:'later',columns:[{id:'arr',label:'ARR',type:'number'}],rows:[{id:'row:stable:1',values:{arr:1.1}},{id:'row:stable:2',values:{arr:2.4}}],commentByCell:{'row:stable:2\u0000arr':{text:'Validate renewal assumption',author:'Alice',sourceRef:'B2'}}}
+}
 function ambiguousSourceTable(){
   return{id:'table:new',label:'Pipeline',source:'pipeline.xlsx',importedAt:'later',columns:[{id:'arr',label:'ARR',type:'number'}],rows:[{id:'row:new:1',values:{arr:1.1}},{id:'row:new:2',values:{arr:2.4}}],commentByCell:{'row:new:1\u0000arr':{text:'Validate renewal assumption',author:'Alice',sourceRef:'B3'},'row:new:2\u0000arr':{text:'Validate renewal assumption',author:'Alice',sourceRef:'B4'}}}
 }
+function recoveredSourceTable(){
+  return{id:'table:recovered',label:'Pipeline',source:'pipeline.xlsx',importedAt:'recovered',columns:[{id:'arr',label:'ARR',type:'number'}],rows:[{id:'row:recovered:1',values:{arr:2.4}}],commentByCell:{'row:recovered:1\u0000arr':{text:'Validate renewal assumption',author:'Alice',sourceRef:'B2'}}}
+}
+function applyCommands(workspace,commands){let session=createVersionedWorkspaceSession(workspace);for(const command of commands)session=executeVersionedWorkspaceCommand(session,command);return session.present}
 
 test('promoting a source note creates a native Frame task without mutating source provenance',()=>{
   const workspace=withImportedTables(cloneSeedWorkspace(),[sourceTable()])
@@ -39,6 +46,7 @@ test('promoting a source note creates a native Frame task without mutating sourc
   session=executeVersionedWorkspaceCommand(session,promotion.command)
   assert.equal(assessWorkspaceReadiness(session.present).openTasks,before+1)
   assert.equal(getWorkspaceReviews(session.present).length,1)
+  assert.equal(getImportedTables(session.present)[0].promotedReviews,undefined)
   const inbox=listWorkspaceReviewInbox(session.present)
   assert.equal(inbox.find((item)=>item.origin==='imported-excel').promotedReviewId,promotion.review.id)
   assert.equal(inbox.some((item)=>item.origin==='frame-data'&&item.id===promotion.review.id),true)
@@ -94,56 +102,66 @@ test('promoted approvals participate in readiness blockers only after explicit p
   assert.equal(getWorkspaceReviews(applied)[0].status,'pending')
 })
 
-test('source re-import remaps a moved classic note by source provenance instead of Frame row position',()=>{
+test('source re-import remaps a moved classic note in canonical workspace review state',()=>{
   const workspace=withImportedTables(cloneSeedWorkspace(),[sourceTable()])
   const source=listWorkspaceReviewInbox(workspace).find((item)=>item.origin==='imported-excel')
   const promoted=executeVersionedWorkspaceCommand(createVersionedWorkspaceSession(workspace),planPromoteSourceReview(workspace,source.id).command).present
-  const oldTable=promoted.importedTables?.[0]
-  const fresh=movedSourceTable();delete fresh.promotedReviews
+  const oldTable=getImportedTables(promoted)[0],fresh=movedSourceTable()
   const plan={kind:'xlsx',label:'pipeline.xlsx',importedItems:2,warnings:[],commands:[{type:'data.imported.replace',tables:[oldTable,fresh]}]}
   const synced=synchronizeOfficeImportPlan(promoted,plan,'pipeline.xlsx')
   const replacement=synced.commands.find((command)=>command.type==='data.imported.replace')
+  const reviewCommand=synced.commands.find((command)=>command.type==='review.workspace.replace')
   assert.equal(replacement.tables.length,1)
   assert.equal(replacement.tables[0].id,'table:new')
-  const review=replacement.tables[0].promotedReviews[0]
+  assert.equal(replacement.tables[0].promotedReviews,undefined)
+  assert.ok(reviewCommand)
+  const review=reviewCommand.reviews[0]
   assert.equal(review.objectId,'table:table:new:row:new:2')
   assert.equal(review.sourceReview.tableId,'table:new')
   assert.equal(review.sourceReview.rowId,'row:new:2')
   assert.equal(review.sourceReview.sourceReviewId,'excel-note:pipeline.xlsx:Pipeline:B3')
 })
 
+test('source re-import prefers stable classic-note cell reference over Frame row position',()=>{
+  const workspace=withImportedTables(cloneSeedWorkspace(),[sourceTable()])
+  const source=listWorkspaceReviewInbox(workspace).find((item)=>item.origin==='imported-excel')
+  const promoted=executeVersionedWorkspaceCommand(createVersionedWorkspaceSession(workspace),planPromoteSourceReview(workspace,source.id).command).present
+  const oldTable=getImportedTables(promoted)[0],fresh=sameCellDifferentFrameRow()
+  const synced=synchronizeOfficeImportPlan(promoted,{kind:'xlsx',label:'pipeline.xlsx',importedItems:2,warnings:[],commands:[{type:'data.imported.replace',tables:[oldTable,fresh]}]},'pipeline.xlsx')
+  const review=synced.commands.find((command)=>command.type==='review.workspace.replace').reviews[0]
+  assert.equal(review.objectId,'table:table:stable-cell:row:stable:2')
+  assert.equal(review.sourceReview.sourceReviewId,'excel-note:pipeline.xlsx:Pipeline:B2')
+})
+
 test('source re-import remaps threaded review by stable root comment id even when its row moves',()=>{
   const workspace=withImportedTables(cloneSeedWorkspace(),[sourceTable()])
   const source=listWorkspaceReviewInbox(workspace).find((item)=>item.origin==='imported-excel-thread')
   const promoted=executeVersionedWorkspaceCommand(createVersionedWorkspaceSession(workspace),planPromoteSourceReview(workspace,source.id).command).present
-  const oldTable=promoted.importedTables?.[0]
-  const fresh=movedSourceTable();delete fresh.promotedReviews
-  const plan={kind:'xlsx',label:'pipeline.xlsx',importedItems:2,warnings:[],commands:[{type:'data.imported.replace',tables:[oldTable,fresh]}]}
-  const synced=synchronizeOfficeImportPlan(promoted,plan,'pipeline.xlsx')
-  const replacement=synced.commands.find((command)=>command.type==='data.imported.replace')
-  const review=replacement.tables[0].promotedReviews[0]
+  const oldTable=getImportedTables(promoted)[0],fresh=movedSourceTable()
+  const synced=synchronizeOfficeImportPlan(promoted,{kind:'xlsx',label:'pipeline.xlsx',importedItems:2,warnings:[],commands:[{type:'data.imported.replace',tables:[oldTable,fresh]}]},'pipeline.xlsx')
+  const review=synced.commands.find((command)=>command.type==='review.workspace.replace').reviews[0]
   assert.equal(review.objectId,'table:table:new:row:new:2')
   assert.equal(review.sourceReview.sourceReviewId,'thread-root')
 })
 
-test('ambiguous classic-note re-import archives promoted native work instead of guessing a target',()=>{
+test('ambiguous classic-note re-import archives source context instead of guessing a target',()=>{
   const workspace=withImportedTables(cloneSeedWorkspace(),[sourceTable()])
   const source=listWorkspaceReviewInbox(workspace).find((item)=>item.origin==='imported-excel')
   const promoted=executeVersionedWorkspaceCommand(createVersionedWorkspaceSession(workspace),planPromoteSourceReview(workspace,source.id).command).present
-  const oldTable=promoted.importedTables?.[0],fresh=ambiguousSourceTable()
-  const plan={kind:'xlsx',label:'pipeline.xlsx',importedItems:2,warnings:[],commands:[{type:'data.imported.replace',tables:[oldTable,fresh]}]}
-  const synced=synchronizeOfficeImportPlan(promoted,plan,'pipeline.xlsx')
+  const oldTable=getImportedTables(promoted)[0],fresh=ambiguousSourceTable()
+  const synced=synchronizeOfficeImportPlan(promoted,{kind:'xlsx',label:'pipeline.xlsx',importedItems:2,warnings:[],commands:[{type:'data.imported.replace',tables:[oldTable,fresh]}]},'pipeline.xlsx')
   const replacement=synced.commands.find((command)=>command.type==='data.imported.replace')
   assert.equal(replacement.tables.length,2)
-  assert.equal(replacement.tables.some((table)=>table.id==='table:new'&&!table.promotedReviews),true)
+  assert.equal(replacement.tables.some((table)=>table.id==='table:new'),true)
   const archive=replacement.tables.find((table)=>table.label==='Pipeline · review archive')
   assert.ok(archive)
-  assert.equal(archive.promotedReviews.length,1)
-  assert.equal(archive.promotedReviews[0].objectId,'table:table:old:row:old:1')
-  assert.equal(synced.warnings.some((warning)=>/retained on a review archive table instead of being dropped or guessed/.test(warning)),true)
+  assert.equal(archive.promotedReviews,undefined)
+  assert.equal(synced.commands.some((command)=>command.type==='review.workspace.replace'),false)
+  assert.equal(getWorkspaceReviews(promoted)[0].objectId,'table:table:old:row:old:1')
+  assert.equal(synced.warnings.some((warning)=>/retained against a review archive table instead of being dropped or guessed/.test(warning)),true)
 })
 
-test('missing source sheet retains promoted review on a review archive table',()=>{
+test('missing source sheet retains source context on a review archive table',()=>{
   const workspace=withImportedTables(cloneSeedWorkspace(),[sourceTable()])
   const source=listWorkspaceReviewInbox(workspace).find((item)=>item.origin==='imported-excel')
   const promoted=executeVersionedWorkspaceCommand(createVersionedWorkspaceSession(workspace),planPromoteSourceReview(workspace,source.id).command).present
@@ -152,6 +170,24 @@ test('missing source sheet retains promoted review on a review archive table',()
   assert.ok(replacement)
   assert.equal(replacement.tables.length,1)
   assert.equal(replacement.tables[0].label,'Pipeline · review archive')
-  assert.equal(replacement.tables[0].promotedReviews.length,1)
+  assert.equal(replacement.tables[0].promotedReviews,undefined)
   assert.equal(synced.warnings.some((warning)=>/review archive table/.test(warning)),true)
+})
+
+test('an archived review can safely reattach when the same source review returns later',()=>{
+  const workspace=withImportedTables(cloneSeedWorkspace(),[sourceTable()])
+  const source=listWorkspaceReviewInbox(workspace).find((item)=>item.origin==='imported-excel')
+  const promoted=executeVersionedWorkspaceCommand(createVersionedWorkspaceSession(workspace),planPromoteSourceReview(workspace,source.id).command).present
+  const oldTable=getImportedTables(promoted)[0],ambiguous=ambiguousSourceTable()
+  const first=synchronizeOfficeImportPlan(promoted,{kind:'xlsx',label:'pipeline.xlsx',importedItems:2,warnings:[],commands:[{type:'data.imported.replace',tables:[oldTable,ambiguous]}]},'pipeline.xlsx')
+  const archivedWorkspace=applyCommands(promoted,first.commands)
+  const recovered=recoveredSourceTable()
+  const second=synchronizeOfficeImportPlan(archivedWorkspace,{kind:'xlsx',label:'pipeline.xlsx',importedItems:1,warnings:[],commands:[{type:'data.imported.replace',tables:[...getImportedTables(archivedWorkspace),recovered]}]},'pipeline.xlsx')
+  const replacement=second.commands.find((command)=>command.type==='data.imported.replace')
+  const reviewCommand=second.commands.find((command)=>command.type==='review.workspace.replace')
+  assert.equal(replacement.tables.length,1)
+  assert.equal(replacement.tables[0].id,'table:recovered')
+  assert.ok(reviewCommand)
+  assert.equal(reviewCommand.reviews[0].objectId,'table:table:recovered:row:recovered:1')
+  assert.equal(reviewCommand.reviews[0].sourceReview.sourceReviewId,'excel-note:pipeline.xlsx:Pipeline:B2')
 })
