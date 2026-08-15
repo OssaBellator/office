@@ -57,9 +57,21 @@ Classic notes do not have an equivalent stable comment GUID. Frame therefore ret
 
 1. exact source-review identity / A1 anchor;
 2. one unambiguous note with the same author and text, allowing a note that moved cells to remain linked; and
-3. positional fallback for older Frame sessions created before A1 note provenance was retained.
+3. positional fallback **only for older Frame sessions** created before A1 note provenance was retained.
 
-If a refreshed source sheet still exists, promoted native review is remapped to the refreshed Frame table/row IDs. If a source sheet disappears while it still contains native promoted review records, Frame retains the prior table as a review anchor rather than silently deleting native work.
+Frame never uses positional fallback for a modern source-anchored note. If multiple refreshed notes are equally plausible, or the source review can no longer be matched safely, Frame refuses to guess.
+
+### Review archives
+
+Unmatched native review work is preserved on an explicit `· review archive` copy of the prior source table. The refreshed source table remains separate.
+
+This happens when, for example:
+
+- a promoted classic note becomes ambiguous because multiple refreshed notes have the same author/text;
+- a promoted source review disappears or changes beyond safe matching; or
+- the source sheet itself disappears on re-import.
+
+The import plan emits a warning explaining how many promoted Frame review records were archived. Review archives keep the original Data context and native review record so work is not dropped or silently attached to the wrong cell.
 
 ## Imported table lifecycle
 
@@ -69,7 +81,8 @@ Because of that storage choice:
 
 - an imported table with **open** native promoted review cannot be removed from the Data UI;
 - once those reviews are resolved or approved, deliberate table removal is allowed;
-- semantic history still records the prior review state after removal.
+- semantic history still records the prior review state after removal;
+- a review archive with open native work is protected by the same rule.
 
 A future server-backed model can lift these records into a workspace-wide review collection without changing the source-link schema.
 
