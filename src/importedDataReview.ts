@@ -15,7 +15,9 @@ export type ImportedDataReviewItem={
   text:string
 }
 
-function stableNoteId(table:ImportedDataTable,rowIndex:number,columnId:string){return`excel-note:${table.source}:${table.label}:${rowIndex+1}:${columnId}`}
+function stableNoteId(table:ImportedDataTable,rowIndex:number,columnId:string,comment:ImportedCellComment){
+  return comment.sourceRef?`excel-note:${table.source}:${table.label}:${comment.sourceRef}`:`excel-note:${table.source}:${table.label}:${rowIndex+1}:${columnId}`
+}
 
 export function getImportedDataReviewItems(workspace:WorkspaceState):ImportedDataReviewItem[]{
   return getImportedTables(workspace).flatMap((table)=>tableReviewItems(table))
@@ -28,7 +30,7 @@ export function tableReviewItems(table:ImportedDataTable):ImportedDataReviewItem
       const key=`${row.id}\u0000${column.id}`
       const comment:ImportedCellComment|undefined=table.commentByCell?.[key]
       if(!comment)continue
-      result.push({id:`review:${table.id}:${row.id}:${column.id}`,sourceReviewId:stableNoteId(table,rowIndex,column.id),tableId:table.id,tableLabel:table.label,source:table.source,rowId:row.id,columnId:column.id,columnLabel:column.label,value:row.values[column.id]??null,...(comment.author?{author:comment.author}:{}),text:comment.text})
+      result.push({id:`review:${table.id}:${row.id}:${column.id}`,sourceReviewId:stableNoteId(table,rowIndex,column.id,comment),tableId:table.id,tableLabel:table.label,source:table.source,rowId:row.id,columnId:column.id,columnLabel:column.label,value:row.values[column.id]??null,...(comment.author?{author:comment.author}:{}),text:comment.text})
     }
   }
   return result
