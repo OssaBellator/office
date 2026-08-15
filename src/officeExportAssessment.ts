@@ -6,7 +6,7 @@ import { getSemanticDocument } from './semanticDocument.ts'
 export type OfficeExportAssessment={
   docx:{documentBlocks:number;claims:number;reviews:number}
   pptx:{scenes:number;speakerNotes:number}
-  xlsx:{tables:number;formulaCells:number;numberFormatCells:number;hyperlinkCells:number;exportableHyperlinkCells:number;suppressedHyperlinkCells:number;booleanCells:number;hiddenTables:number;veryHiddenTables:number;sourceDateSystems:Array<'1900'|'1904'>;suppressedDateLikeFormatCells:number}
+  xlsx:{tables:number;formulaCells:number;numberFormatCells:number;hyperlinkCells:number;exportableHyperlinkCells:number;suppressedHyperlinkCells:number;reviewNoteCells:number;booleanCells:number;hiddenTables:number;veryHiddenTables:number;sourceDateSystems:Array<'1900'|'1904'>;suppressedDateLikeFormatCells:number}
   warnings:string[]
 }
 
@@ -20,11 +20,12 @@ function looksDateLike(format:ImportedNumberFormat){
 
 export function assessOfficeExport(workspace:WorkspaceState):OfficeExportAssessment{
   const semantic=getSemanticDocument(workspace),scenes=buildPresentationScenes(workspace),tables=getImportedTables(workspace)
-  let formulaCells=0,numberFormatCells=0,hyperlinkCells=0,exportableHyperlinkCells=0,suppressedHyperlinkCells=0,booleanCells=0,hiddenTables=0,veryHiddenTables=0,suppressedDateLikeFormatCells=0
+  let formulaCells=0,numberFormatCells=0,hyperlinkCells=0,exportableHyperlinkCells=0,suppressedHyperlinkCells=0,reviewNoteCells=0,booleanCells=0,hiddenTables=0,veryHiddenTables=0,suppressedDateLikeFormatCells=0
   const sourceDateSystems=new Set<'1900'|'1904'>()
   for(const table of tables){
     formulaCells+=Object.keys(table.formulaByCell??{}).length
     numberFormatCells+=Object.keys(table.numberFormatByCell??{}).length
+    reviewNoteCells+=Object.keys(table.commentByCell??{}).length
     const links=Object.values(table.linkByCell??{});hyperlinkCells+=links.length
     for(const link of links){if(link.kind==='internal'||isSafeNavigableImportedLink(link))exportableHyperlinkCells+=1;else suppressedHyperlinkCells+=1}
     if(table.sourceVisibility==='hidden')hiddenTables+=1
@@ -44,12 +45,13 @@ export function assessOfficeExport(workspace:WorkspaceState):OfficeExportAssessm
   if(numberFormatCells&&!suppressedDateLikeFormatCells)warnings.push(`${numberFormatCells} imported Excel number-format cell${numberFormatCells===1?' is':'s are'} projected back into XLSX styles.`)
   if(exportableHyperlinkCells)warnings.push(`${exportableHyperlinkCells} safe web/mail or internal workbook hyperlink${exportableHyperlinkCells===1?' is':'s are'} projected back into XLSX.`)
   if(suppressedHyperlinkCells)warnings.push(`${suppressedHyperlinkCells} imported external hyperlink${suppressedHyperlinkCells===1?' is':'s are'} preserved in Frame but omitted from XLSX because the target uses a file/custom/unsupported scheme.`)
+  if(reviewNoteCells)warnings.push(`${reviewNoteCells} imported Excel cell note${reviewNoteCells===1?' remains':'s remain'} Frame review provenance and ${reviewNoteCells===1?'is':'are'} omitted from the default XLSX compatibility projection until classic-note export is externally validated.`)
   if(hiddenTables||veryHiddenTables)warnings.push(`${hiddenTables+veryHiddenTables} imported worksheet${hiddenTables+veryHiddenTables===1?' retains':'s retain'} source hidden/very-hidden state in XLSX export.`)
   warnings.push('Frame JSON remains the lossless semantic backup; Office files are compatibility projections and do not carry hidden Frame-only manifest metadata by default.')
   return{
     docx:{documentBlocks:semantic.blocks.length,claims:semantic.claims.length,reviews:semantic.annotations.length},
     pptx:{scenes:scenes.length,speakerNotes:scenes.filter((scene)=>Boolean(scene.note)).length},
-    xlsx:{tables:2+tables.length,formulaCells,numberFormatCells,hyperlinkCells,exportableHyperlinkCells,suppressedHyperlinkCells,booleanCells,hiddenTables,veryHiddenTables,sourceDateSystems:[...sourceDateSystems].sort(),suppressedDateLikeFormatCells},
+    xlsx:{tables:2+tables.length,formulaCells,numberFormatCells,hyperlinkCells,exportableHyperlinkCells,suppressedHyperlinkCells,reviewNoteCells,booleanCells,hiddenTables,veryHiddenTables,sourceDateSystems:[...sourceDateSystems].sort(),suppressedDateLikeFormatCells},
     warnings,
   }
 }
