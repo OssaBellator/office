@@ -4,6 +4,7 @@ function record(value:unknown,field:string):Record<string,unknown>{if(!value||ty
 function text(value:unknown,field:string){if(typeof value!=='string')throw new Error(`${field} must be a string`);return value}
 function boolean(value:unknown,field:string){if(typeof value!=='boolean')throw new Error(`${field} must be a boolean`);return value}
 function oneOf<T extends string>(value:unknown,field:string,allowed:readonly T[]):T{const result=text(value,field) as T;if(!allowed.includes(result))throw new Error(`${field} must be one of: ${allowed.join(', ')}`);return result}
+function optionalText(value:unknown,field:string){if(value===undefined)return undefined;const result=text(value,field);if(!result.trim())throw new Error(`${field} must not be blank`);return result}
 
 function parseSource(value:unknown,field:string):WorkspaceReviewSource{
   const input=record(value,field)
@@ -13,7 +14,10 @@ function parseSource(value:unknown,field:string):WorkspaceReviewSource{
   if(kind==='word-comment'){
     const blockId=text(input.blockId,`${field}.blockId`)
     if(!blockId.trim())throw new Error(`${field}.blockId must not be blank`)
-    return{kind,source,blockId,sourceReviewId}
+    const commentId=optionalText(input.commentId,`${field}.commentId`),paraId=optionalText(input.paraId,`${field}.paraId`),parentSourceReviewId=optionalText(input.parentSourceReviewId,`${field}.parentSourceReviewId`),durableId=optionalText(input.durableId,`${field}.durableId`),dateUtc=optionalText(input.dateUtc,`${field}.dateUtc`),done=input.done===undefined?undefined:boolean(input.done,`${field}.done`)
+    if(paraId!==undefined&&!/^[0-9A-Fa-f]{8}$/.test(paraId))throw new Error(`${field}.paraId must be an 8-digit hexadecimal paragraph id`)
+    if(durableId!==undefined&&!/^[0-9A-Fa-f]{8}$/.test(durableId))throw new Error(`${field}.durableId must be an 8-digit hexadecimal durable id`)
+    return{kind,source,blockId,sourceReviewId,...(commentId!==undefined?{commentId}:{}),...(paraId!==undefined?{paraId:paraId.toUpperCase()}:{}),...(parentSourceReviewId!==undefined?{parentSourceReviewId}:{}),...(durableId!==undefined?{durableId:durableId.toUpperCase()}:{}),...(done!==undefined?{done}:{}),...(dateUtc!==undefined?{dateUtc}:{})}
   }
   const tableId=text(input.tableId,`${field}.tableId`),rowId=text(input.rowId,`${field}.rowId`),columnId=text(input.columnId,`${field}.columnId`)
   if(!tableId.trim()||!rowId.trim()||!columnId.trim())throw new Error(`${field} Excel source reference fields must not be blank`)
