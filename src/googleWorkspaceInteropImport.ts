@@ -1,9 +1,9 @@
 import type { WorkspaceState } from './model.ts'
-import { planOfficeInteropImport } from './officeInteropImport.ts'
+import { planSecureOfficeImport } from './officeSecureImport.ts'
 import { getGoogleWorkspaceExportFormat, type GoogleWorkspaceExportProvider, type GoogleWorkspaceFile } from './googleWorkspaceImport.ts'
 import type { OfficeImportPlan } from './officeImportPlanner.ts'
 
-/** Direct Google import through the same fully enriched Office interoperability pipeline. */
+/** Direct Google import through the same secure, enriched Office interoperability pipeline. */
 export async function planGoogleWorkspaceInteropImport(
   workspace:WorkspaceState,
   file:GoogleWorkspaceFile,
@@ -11,5 +11,6 @@ export async function planGoogleWorkspaceInteropImport(
 ):Promise<OfficeImportPlan>{
   const format=getGoogleWorkspaceExportFormat(file.kind)
   const bytes=await provider.exportFile({fileId:file.id,mimeType:format.mimeType})
-  return planOfficeInteropImport(workspace,bytes,`${file.name}.${format.extension}`)
+  const base=file.name.replace(/\.[^.]+$/,'')||'Google Workspace import'
+  return planSecureOfficeImport(workspace,bytes,`${base}.${format.extension}`)
 }
