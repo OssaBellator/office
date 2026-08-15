@@ -1,45 +1,57 @@
 # Frame interoperability contract
 
-Frame's native format is the semantic workspace, not a collection of Office files. Interoperability is implemented as **semantic import** and **compatibility export**: content enters Frame as editable objects, and Frame can project those objects back into common formats when another tool needs a file.
+Frame's native format is the semantic workspace, not a collection of Office files. Interoperability is implemented as **semantic import** and **compatibility export**: familiar files enter Frame as editable, versioned objects; Frame projects those objects back into common formats when another tool needs a file.
 
-The lossless backup format remains the Frame workspace/session JSON because it contains semantic history, object relationships, review state, provenance, and other concepts that DOCX/PPTX/XLSX cannot represent completely.
+The lossless representation remains the Frame workspace/session JSON because it contains semantic history, relationships, review state, provenance and other concepts that DOCX/PPTX/XLSX cannot completely represent.
 
 ## Current support matrix
 
 | Source / target | Import into Frame | Export from Frame | Current behavior |
 | --- | --- | --- | --- |
-| Microsoft Word `.docx` | Yes | Yes | Paragraphs, headings and lists become semantic document blocks. Tables become Frame Data tables. Claims/metrics/decisions export as normal Word content. |
-| Microsoft PowerPoint `.pptx` | Yes | Yes | Slides become editable Frame scenes. Slide text, slide order and speaker notes are preserved semantically. Frame exports standard slides with real speaker-notes parts. |
-| Microsoft Excel `.xlsx` | Yes | Yes | Recognized finance sheets update live semantic models; arbitrary sheets remain editable Frame Data tables. Frame exports Regions, Plan and retained foreign tables. |
-| Google Docs | Yes, via DOCX export; Drive adapter implemented | DOCX projection | Google-native content uses the same DOCX semantic import path. Direct Drive transport is implemented but sign-in/picker UI still needs application OAuth configuration. |
-| Google Slides | Yes, via PPTX export; Drive adapter implemented | PPTX projection | Google-native content uses the same PPTX semantic import path. |
-| Google Sheets | Yes, via XLSX export; Drive adapter implemented | XLSX projection | Google-native content uses the same XLSX semantic import path. |
-| CSV | Yes | Yes | Regions/Plan CSV has schema-aware import; CSV remains a simple compatibility format. |
+| Microsoft Word `.docx` | Yes | Yes | Paragraphs/headings/lists become semantic document blocks; tables become Frame Data. Source provenance is retained. |
+| Microsoft PowerPoint `.pptx` | Yes | Yes | Relationship slide order, slide text and speaker notes become semantic scenes. Export uses real PowerPoint notes parts. |
+| Microsoft Excel `.xlsx` | Yes | Yes | Compatible finance sheets update live models; arbitrary/foreign sheets remain Data. Booleans, formula provenance, hidden-sheet state, number formats and 1900/1904 source date system are preserved. |
+| Google Docs | Yes, direct Drive or DOCX download | DOCX projection | Direct Drive export goes through the same secure Office pipeline as local files. |
+| Google Slides | Yes, direct Drive or PPTX download | PPTX projection | Native Google Slides are exported in memory to PPTX then semanticized. |
+| Google Sheets | Yes, direct Drive or XLSX download | XLSX projection | Native Sheets are exported in memory to XLSX; formula/format provenance uses the same Excel path. |
+| CSV | Yes | Yes | Regions/Plan CSV uses schema-aware semantic import; CSV remains a simple compatibility projection. |
 | Frame JSON | Yes | Yes | Lossless workspace/session backup including semantic history. |
-| Legacy Office `.doc/.ppt/.xls` | No | No | Convert to DOCX/PPTX/XLSX in Office or Google Workspace first. |
-| Google pointer `.gdoc/.gslides/.gsheet` | No direct file parsing | N/A | Pointer files do not contain document content. Download/export the native file or use the Drive provider. |
+| Legacy Office `.doc/.ppt/.xls` | No | No | Convert to DOCX/PPTX/XLSX first. |
+| Macro-enabled `.docm/.pptm/.xlsm` | Rejected by secure import | No | Frame does not import VBA/ActiveX packages. Convert to macro-free OOXML first. |
+| Google pointer `.gdoc/.gslides/.gsheet` | No pointer-file parsing | N/A | Pointer files contain no document body; use direct Drive or export/download. |
+
+## Product import/export entrypoints
+
+The main workspace does not make raw Office parsing an incidental file-picker side effect.
+
+- **Office import** routes to `office-import.html`, which runs the secure package gate, content detection, semantic planning, fidelity enrichment, source synchronization and governed preview before Apply.
+- **Google Drive import** routes to `google-drive.html`, which obtains read-only Google authorization on demand and sends exported Office bytes through the same secure pipeline.
+- **Office export** routes to `office-export.html`, which shows a fidelity assessment before generating DOCX/PPTX/XLSX.
+
+This keeps interoperability policy explicit and avoids creating separate conversion engines for local files and cloud files.
 
 ## Word / Google Docs fidelity
 
 ### Preserved as editable Frame objects
 
-- Paragraph text.
-- Word/Google title and subtitle styles.
-- Heading hierarchy, collapsed to Frame heading levels 1–3 where required.
-- Bullet and numbered list semantics.
-- Document tables, imported into Data instead of flattened into surrounding prose.
-- Source filename on imported paragraph blocks; the source is visible in Docs, searchable, version-diffed, serialized, and included in Markdown/DOCX compatibility exports.
+- paragraph text;
+- title/subtitle styles;
+- heading hierarchy, normalized to Frame heading levels 1–3 where required;
+- bullet/numbered list semantics;
+- document tables imported into Data;
+- source filename on imported paragraph blocks.
+
+The source is visible in Docs, searchable, version-diffed, serialized, and included in Markdown/DOCX compatibility projections.
 
 ### Warned before Apply
-
-The import preview explicitly reports fidelity gaps instead of silently dropping them. Current warnings cover:
 
 - embedded images/media;
 - embedded charts/objects;
 - footnotes/endnotes;
 - comments/comment threads;
-- headers/footers; and
-- tracked revision markup.
+- headers/footers;
+- tracked revision markup;
+- exact source layout.
 
 These features are not yet native Frame objects.
 
@@ -47,92 +59,136 @@ These features are not yet native Frame objects.
 
 ### Preserved as editable Frame objects
 
-- Presentation relationship order rather than filename order.
-- Slide titles and text bodies.
-- Speaker notes through notes-slide relationships.
-- Imported slide source attribution.
-- Slide tables as editable text rows when a native semantic table object cannot yet represent the layout.
-- Imported scenes participate in Frame reorder, hide/show, notes, presentation mode, semantic history, search and revert behavior.
+- presentation relationship order rather than filename order;
+- slide titles and text bodies;
+- speaker notes through notes-slide relationships;
+- imported slide source attribution;
+- slide tables as editable text rows when native semantic table geometry is unavailable;
+- imported scenes participate in Frame reorder/hide/show/notes/presentation/search/history/revert behavior.
 
 ### Export behavior
 
-Frame's PPTX projection creates:
+Frame's PPTX projection creates a normal OOXML presentation package with:
 
-- a presentation part;
+- presentation part;
 - slide master and blank layout;
-- a Frame theme;
-- one standard slide part per visible semantic scene;
-- a notes master;
-- one real notes-slide part per exported scene; and
+- Frame theme;
+- one slide per visible semantic scene;
+- notes master;
+- real notes-slide parts; and
 - slide/notes relationships.
 
-Speaker cues are therefore exported as notes rather than rendered visibly as `Speaker note:` content on the slide.
+Speaker cues therefore remain speaker notes rather than visible `Speaker note:` slide text.
 
 ### Warned before Apply
 
-- source theme/master geometry is semanticized rather than reproduced pixel-for-pixel;
-- exact text positioning and source fonts are not retained;
-- images/media are not imported yet;
-- charts/SmartArt are not yet converted to native Frame visual objects;
-- PowerPoint tables are currently flattened into editable text rows; and
-- transitions/animations are not imported.
+- source theme/master geometry;
+- exact source text positioning/fonts;
+- images/media;
+- charts/SmartArt;
+- native table geometry;
+- transitions/animations.
 
 ## Excel / Google Sheets fidelity
 
 ### Recognized semantic models
 
-A sheet with compatible Region/Revenue/Growth/Margin columns can update Frame's live regional model. Compatible Plan/Budget/Forecast sheets can update Frame's live plan model. These changes still go through normal semantic preview, permissions, history, undo/redo and revert.
+A compatible Region/Revenue/Growth/Margin worksheet can update Frame's live regional model. Compatible Plan/Budget/Forecast sheets can update the live plan model. These changes still go through semantic preview, permissions, history, undo/redo and revert.
 
-### Foreign schemas
+### Foreign and preserved source sheets
 
-A worksheet that does not map to the live finance model remains an **Imported Data table**. These tables:
+A worksheet that does not map cleanly to the live finance model remains an **Imported Data table**. Recognized sheets are also retained when doing so is necessary to avoid losing extra columns, formulas, hidden-state provenance or number/date display semantics.
 
-- retain source filename and sheet label;
-- infer text/number columns;
-- remain editable in Frame Data;
-- participate in semantic search;
-- generate cell-level semantic version diffs;
-- are codec/runtime validated;
-- are revertible; and
-- are included in XLSX compatibility export.
+Imported Data tables currently preserve:
 
-Recognized sheets with extra foreign columns are also retained as imported tables so those columns are not discarded.
+- source filename and sheet label;
+- source worksheet state: `visible`, `hidden`, `veryHidden`;
+- source workbook date system: `1900` or `1904`;
+- typed text, number and boolean cells;
+- foreign columns/schemas;
+- formula text beside cached formula values;
+- per-cell number-format ID and custom format code where present.
+
+They remain editable, codec/runtime validated, searchable, version-diffed, revertible, and included in XLSX export.
 
 ### Formula preservation policy
 
-Frame currently preserves two separate pieces of an imported Excel/Google Sheets formula cell:
+For an imported formula cell Frame preserves:
 
-1. the workbook's cached value, which is the value shown and used for compatible live-model updates; and
-2. the original formula text, stored as provenance on the imported table cell.
+1. the workbook's cached value, which is shown and may feed compatible live-model updates; and
+2. the original formula text as per-cell provenance.
 
-Formula-backed cells display a `ƒ` marker in Data. Search and semantic history can see formula text separately from cached values. Editing the cell in Frame deliberately removes the preserved foreign formula from that cell, because the user has replaced the imported value.
+Compact Excel shared-formula dependents are expanded with relative A1 reference translation before storage. Formula-backed cells display a `ƒ` marker in Data. Editing the value deliberately removes the preserved foreign formula from that cell because the user has replaced the imported formula result.
 
-Frame **does not execute arbitrary foreign spreadsheet formulas yet**. This avoids treating a foreign workbook language as trusted Frame logic. Formula translation should become an explicit conversion step into Frame's semantic formula engine.
+Frame **does not execute arbitrary foreign spreadsheet formulas**. Formula translation into Frame's semantic formula engine must be explicit and reviewable.
 
-Frame's XLSX exporter currently writes cached values only; it does not automatically re-emit preserved foreign formulas. That is intentional until formula export has an explicit trust/translation policy.
+Frame's XLSX exporter writes cached values rather than silently reactivating preserved foreign formulas.
 
-### Other warned fidelity gaps
+### Boolean values
 
-- cell styles and date/number display formats;
+Excel `t="b"` cells are imported as true booleans rather than strings/numbers. Boolean columns are inferred when all present values are boolean, can be edited as TRUE/FALSE, participate in semantic diffs/search, and re-export as XLSX boolean cells.
+
+### Hidden and very-hidden worksheets
+
+Workbook sheet visibility is source provenance, not UI trivia. Frame retains hidden/very-hidden state on imported Data tables, including recognized finance worksheets when needed to avoid losing that source property. XLSX export re-emits the source sheet state.
+
+### Number-format and date-system provenance
+
+Frame preserves per-cell:
+
+- Excel `numFmtId`; and
+- custom `formatCode` when present.
+
+It also preserves whether the source workbook uses the 1900 or 1904 date system.
+
+Frame intentionally leaves the stored numeric cell value unchanged during import rather than guessing a JavaScript/semantic date. This avoids silently changing serial semantics.
+
+Number-format provenance is shown with a `#` marker in Data and participates in search, semantic history and interoperability reporting.
+
+### Safe number-format re-export
+
+The XLSX projection can re-emit safe imported number formats through `xl/styles.xml`.
+
+- If formatted imported tables consistently use 1904 dates, Frame exports `date1904="1"`.
+- If all formatted tables use 1900, Frame uses the normal 1900 system.
+- If formatted source tables mix 1900 and 1904 date systems, the combined Frame workbook uses 1900. Date-like styles from 1904-source cells are intentionally suppressed so raw serials are not rendered as silently shifted dates. Non-date-like formats can still be projected safely.
+
+The Office export assessment reports this suppression before download.
+
+### Still not translated
+
+- fonts, fills, borders and alignment;
+- conditional formatting;
 - merged-cell geometry;
-- Excel comments/notes; and
-- external workbook links/data connections.
+- comments/notes;
+- external workbook/data connections;
+- cell hyperlinks as first-class provenance (next target).
 
 ## Google Drive direct-import boundary
 
-`googleDriveProvider.ts` implements a read-only Google Drive transport boundary. It can:
+`googleIdentity.ts` and `googleDriveProvider.ts` implement a read-only browser integration.
 
-- discover native Google Docs, Sheets and Slides;
-- search by filename;
-- paginate Drive results;
-- map native Google MIME types to Frame import kinds; and
-- export a selected native Google file to DOCX, XLSX or PPTX bytes for the same semantic planners used by local Office files.
+The Google flow can:
 
-The provider uses a read-only Drive scope. OAuth client configuration, consent and picker UI are deliberately separate from conversion logic. Once product credentials are configured, the UI should remain a thin layer over this provider rather than creating another import engine.
+- request access only when the user chooses to connect;
+- discover native Google Docs/Sheets/Slides;
+- search/paginate Drive results;
+- map Google MIME types to Frame import kinds;
+- export the selected file to DOCX/XLSX/PPTX bytes in memory; and
+- route those bytes through `planSecureOfficeImport()`.
+
+Security model:
+
+- public OAuth web client ID only;
+- no client secret in browser code;
+- read-only Drive scope;
+- ephemeral token held in UI memory;
+- same macro/control rejection and bounded ZIP parser as local Office import;
+- no mutation before governed semantic preview.
 
 ## Import safety limits
 
-DOCX, PPTX and XLSX are ZIP packages and are treated as untrusted local input. The current browser-side reader:
+DOCX/PPTX/XLSX are ZIP packages and are treated as untrusted input. The current browser-side reader:
 
 - rejects packages larger than 128 MiB;
 - rejects more than 20,000 ZIP entries;
@@ -143,7 +199,39 @@ DOCX, PPTX and XLSX are ZIP packages and are treated as untrusted local input. T
 - validates central/local-header and payload bounds; and
 - does not inflate unused binary media merely to inspect text/XML content.
 
-These limits are prototype safeguards, not a final enterprise upload policy.
+The secure boundary rejects VBA and ActiveX parts. These are prototype safeguards, not the final enterprise upload policy.
+
+## Export privacy and trust boundary
+
+Normal Office compatibility exports do **not** embed hidden Frame-only semantic manifests. That prevents comments/review/provenance metadata that is invisible on the Office canvas from unexpectedly leaving the workspace.
+
+An internal manifest mechanism exists for controlled round-trip workflows and has an explicit strip operation, but ordinary shareable DOCX/PPTX/XLSX files remain clean compatibility projections.
+
+Foreign Excel formulas are likewise never implicitly reactivated on export.
+
+## Package validation
+
+Frame has a local OPC validator that checks:
+
+- internal relationship targets exist;
+- relationship IDs are unique; and
+- all package parts have content-type coverage.
+
+The exporter regression suite covers DOCX, PPTX, XLSX, notes parts and styled XLSX packages including the `styles.xml` relationship/content type.
+
+This is stronger than self-parsing alone, but it is not a substitute for opening generated files in real current Office applications.
+
+## Local interoperability QA
+
+Useful local commands/tools:
+
+- `npm run test:interop`
+- `scripts/generate-office-fixtures.mjs`
+- `scripts/inspect-office-import.mjs`
+- Office package validator CLI/tooling
+- `docs/INTEROPERABILITY_TESTING.md`
+
+The environment used by this assistant cannot currently run the full Vite build or open installed Microsoft Office applications, so external smoke validation remains a deliberate manual gate.
 
 ## Compatibility-export philosophy
 
@@ -153,16 +241,16 @@ Frame should never make users choose between semantic power and ecosystem compat
 2. **Warn** when source fidelity cannot be represented yet.
 3. **Keep provenance** so imported information never becomes anonymous copy/paste.
 4. **Work semantically** across Docs, Data and Present.
-5. **Export** standard Office files when collaborators or downstream systems require them.
-6. **Keep Frame JSON** as the lossless representation of the workspace itself.
+5. **Assess export fidelity** before projecting into Office files.
+6. **Export** standard files when collaborators/downstream systems require them.
+7. **Keep Frame JSON** as the lossless representation of the workspace itself.
 
 ## Next interoperability milestones
 
-1. Wire OAuth/sign-in and a Google Drive picker to the existing read-only provider.
-2. Import embedded DOCX/PPTX images into reusable Frame media objects rather than skipping media bytes.
-3. Convert PowerPoint charts and tables into linked semantic chart/table objects.
-4. Translate supported Excel formulas into Frame formulas with an explicit reviewable mapping step.
-5. Add rich Excel styles/date types without allowing formatting to obscure semantic data types.
-6. Represent Word comments/revisions as Frame review annotations and version events.
-7. Validate generated DOCX/PPTX/XLSX packages against real Microsoft Office/LibreOffice fixtures in the local interoperability test suite.
-8. Add round-trip fixture tests using exports produced by current Microsoft 365 and Google Workspace versions.
+1. Preserve XLSX hyperlinks as per-cell semantic provenance and re-export them safely.
+2. Represent Excel comments/notes and Word comments as Frame review annotations.
+3. Import embedded DOCX/PPTX images into reusable Frame media objects.
+4. Convert PowerPoint charts/tables into linked semantic chart/table objects.
+5. Add an explicit reviewable translation layer for supported Excel formulas into Frame formulas.
+6. Preserve selected spreadsheet style semantics (alignment/emphasis) only where they aid meaning rather than recreating formatting-first spreadsheets.
+7. Expand fixture coverage using current Microsoft 365 and Google Workspace exports and run manual application smoke tests in addition to `test:interop`.
