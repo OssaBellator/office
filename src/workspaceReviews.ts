@@ -30,6 +30,7 @@ export type WorkspaceReviewRecord={
   createdAt:string
   sourceReview?:WorkspaceReviewSource
   sourceOnly?:boolean
+  sourceDetached?:boolean
 }
 
 type ExtendedWorkspaceState=WorkspaceState&{workspaceReviews?:unknown}
@@ -81,6 +82,7 @@ export function workspaceReviewSummary(workspace:WorkspaceState){
     pendingApprovals:reviews.filter((review)=>review.kind==='approval'&&review.status!=='approved').length,
     unresolvedComments:reviews.filter((review)=>review.kind==='comment'&&review.status!=='resolved').length,
     promotedFromSource:reviews.filter((review)=>Boolean(review.sourceReview)).length,
+    detachedFromSource:reviews.filter((review)=>review.sourceDetached).length,
     sourceOnly:sourceOnly.length,
   }
 }
