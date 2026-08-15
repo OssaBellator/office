@@ -7,7 +7,7 @@ import { exportWorkspaceXlsx, createStoredZip } from '../src/officeExport.ts'
 import { planSecureOfficeImport } from '../src/officeSecureImport.ts'
 import { readOfficeZip } from '../src/officeArchive.ts'
 import { searchWorkspace } from '../src/searchIndex.ts'
-import { compareWorkspaceStates } from '../src/workspaceCompare.ts'
+import { compareWorkspaceStatesWithReview } from '../src/workspaceReviewCompare.ts'
 
 function commentsWorkbook({threaded=false}={}){
   const files={
@@ -47,7 +47,7 @@ test('classic note provenance survives command decoding and semantic search',()=
 test('semantic comparison treats cell-note changes separately from cell values',()=>{
   const before=withImportedTables(cloneSeedWorkspace(),[noteTable('Validate renewal assumption')])
   const after=withImportedTables(cloneSeedWorkspace(),[noteTable('Validated with Finance')])
-  const diffs=compareWorkspaceStates(before,after)
+  const diffs=compareWorkspaceStatesWithReview(before,after)
   assert.equal(diffs.some((diff)=>diff.objectId==='table:table:pipeline:row:1'&&diff.field==='ARR'),false)
   const noteDiff=diffs.find((diff)=>diff.objectId==='table:table:pipeline:row:1'&&diff.field==='ARR note')
   assert.ok(noteDiff)
