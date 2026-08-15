@@ -6,6 +6,7 @@ import { cloneSeedWorkspace } from '../src/model.ts'
 import { createStoredZip, exportWorkspaceXlsx } from '../src/officeExport.ts'
 import { planSecureOfficeImport } from '../src/officeSecureImport.ts'
 import { readOfficeXml, readOfficeZip } from '../src/officeArchive.ts'
+import { compareWorkspaceStates } from '../src/workspaceCompare.ts'
 import { parseXlsxNumberFormatStyles } from '../src/xlsxNumberFormatImport.ts'
 
 function formattedWorkbook({date1904=true}={}){
@@ -18,6 +19,7 @@ function formattedWorkbook({date1904=true}={}){
     'xl/worksheets/sheet1.xml':'<worksheet><sheetData><row r="1"><c r="A1" t="inlineStr"><is><t>Date serial</t></is></c><c r="B1" t="inlineStr"><is><t>Label</t></is></c></row><row r="2"><c r="A2" s="1"><v>45000</v></c><c r="B2" t="inlineStr"><is><t>Milestone</t></is></c></row></sheetData></worksheet>',
   })
 }
+function datesTable(dateSystem='1900',numberFormat){return{id:'table:dates',label:'Dates',source:'dates.xlsx',importedAt:'now',sourceDateSystem:dateSystem,columns:[{id:'date',label:'Date',type:'number'}],rows:[{id:'row:1',values:{date:45000}}],...(numberFormat?{numberFormatByCell:{'row:1\u0000date':numberFormat}}:{})}}
 
 test('secure XLSX import preserves custom number format and workbook date system without converting serials',async()=>{
   const plan=await planSecureOfficeImport(cloneSeedWorkspace(),formattedWorkbook(),'dates.xlsx')
@@ -33,14 +35,25 @@ test('secure XLSX import preserves custom number format and workbook date system
 })
 
 test('number-format and date-system metadata survives runtime semantic command decoding',()=>{
-  const table={id:'table:dates',label:'Dates',source:'dates.xlsx',importedAt:'now',sourceDateSystem:'1904',columns:[{id:'date',label:'Date',type:'number'}],rows:[{id:'row:1',values:{date:45000}}],numberFormatByCell:{'row:1\u0000date':{numFmtId:165,formatCode:'yyyy-mm-dd'}}}
+  const table=datesTable('1904',{numFmtId:165,formatCode:'yyyy-mm-dd'})
   const command={type:'data.imported.replace',tables:[table]}
   assert.deepEqual(deserializeWorkspaceCommand(serializeWorkspaceCommand(command)),command)
 })
 
+test('semantic comparison reports date-system and number-format changes separately',()=>{
+  const before=withImportedTables(cloneSeedWorkspace(),[datesTable('1900',{numFmtId:14})])
+  const after=withImportedTables(cloneSeedWorkspace(),[datesTable('1904',{numFmtId:165,formatCode:'yyyy-mm-dd'})])
+  const diffs=compareWorkspaceStates(before,after)
+  const dateSystem=diffs.find((diff)=>diff.objectId==='table:table:dates'&&diff.field==='sourceDateSystem')
+  assert.deepEqual({before:dateSystem.before,after:dateSystem.after},{before:'1900',after:'1904'})
+  const format=diffs.find((diff)=>diff.objectId==='table:table:dates:row:1'&&diff.field==='Date number format')
+  assert.equal(format.before,JSON.stringify({numFmtId:14}))
+  assert.equal(format.after,JSON.stringify({numFmtId:165,formatCode:'yyyy-mm-dd'}))
+})
+
 test('Frame XLSX export re-emits custom number formats and a consistent 1904 date system',async()=>{
   let workspace=cloneSeedWorkspace()
-  workspace=withImportedTables(workspace,[{id:'table:dates',label:'Dates',source:'dates.xlsx',importedAt:'now',sourceDateSystem:'1904',columns:[{id:'date',label:'Date',type:'number'}],rows:[{id:'row:1',values:{date:45000}}],numberFormatByCell:{'row:1\u0000date':{numFmtId:165,formatCode:'yyyy-mm-dd'}}}])
+  workspace=withImportedTables(workspace,[datesTable('1904',{numFmtId:165,formatCode:'yyyy-mm-dd'})])
   const entries=await readOfficeZip(exportWorkspaceXlsx(workspace).bytes)
   assert.match(readOfficeXml(entries,'xl/workbook.xml'),/<workbookPr date1904="1"\/>/)
   const styles=readOfficeXml(entries,'xl/styles.xml')
