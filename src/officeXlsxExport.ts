@@ -1,4 +1,4 @@
-import { getImportedTableNumberFormat, getImportedTables, type ImportedDataTable, type ImportedDateSystem, type ImportedNumberFormat, type ImportedTableCell } from './importedTables.ts'
+import { getImportedTableLink, getImportedTableNumberFormat, getImportedTables, isSafeNavigableImportedLink, type ImportedCellLink, type ImportedDataTable, type ImportedDateSystem, type ImportedNumberFormat, type ImportedTableCell } from './importedTables.ts'
 import type { WorkspaceState } from './model.ts'
 import { createStoredZip, type OfficeExportFile } from './officeExportLegacy.ts'
 import type { ImportedSheetVisibility } from './officeParsers.ts'
@@ -12,6 +12,7 @@ function importedRows(table:ImportedDataTable):Array<Array<ImportedTableCell>>{r
 type ExportTable={name:string;rows:Array<Array<ImportedTableCell>>;visibility?:ImportedSheetVisibility;sourceTable?:ImportedDataTable}
 type StyleEntry={styleIndex:number;numFmtId:number;formatCode?:string}
 type StyleCatalog={byKey:Map<string,StyleEntry>;customFormats:Array<{numFmtId:number;formatCode:string}>;dateSystem:ImportedDateSystem}
+type SheetHyperlink={ref:string;link:ImportedCellLink;relationshipId?:string}
 const builtinDateFormatIds=new Set([14,15,16,17,18,19,20,21,22,27,28,29,30,31,32,33,34,35,36,45,46,47,50,51,52,53,54,55,56,57,58])
 
 function formatKey(format:ImportedNumberFormat){return format.formatCode!==undefined?`code:${format.formatCode}`:`id:${format.numFmtId}`}
@@ -47,7 +48,30 @@ function styleIndexFor(table:ImportedDataTable,rowIndex:number,columnIndex:numbe
   const format=getImportedTableNumberFormat(table,row.id,column.id);if(!format||!canEmitFormat(table,format,catalog.dateSystem))return 0
   return catalog.byKey.get(formatKey(format))?.styleIndex??0
 }
-function sheetXml(table:ExportTable,catalog:StyleCatalog){return`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData>${table.rows.map((row,rowIndex)=>`<row r="${rowIndex+1}">${row.map((value,columnIndex)=>{if(value===null||value===undefined)return'';const ref=cellReference(columnIndex,rowIndex+1),styleIndex=table.sourceTable?styleIndexFor(table.sourceTable,rowIndex,columnIndex,catalog):0,style=styleIndex?` s="${styleIndex}"`:'';if(typeof value==='boolean')return`<c r="${ref}"${style} t="b"><v>${value?1:0}</v></c>`;return typeof value==='number'&&Number.isFinite(value)?`<c r="${ref}"${style}><v>${value}</v></c>`:`<c r="${ref}"${style} t="inlineStr"><is><t xml:space="preserve">${xml(value)}</t></is></c>`}).join('')}</row>`).join('')}</sheetData></worksheet>`}
+function exportableHyperlinks(table:ImportedDataTable|undefined){
+  const links:SheetHyperlink[]=[];if(!table)return links
+  let relationshipIndex=1
+  table.rows.forEach((row,rowIndex)=>table.columns.forEach((column,columnIndex)=>{
+    const link=getImportedTableLink(table,row.id,column.id);if(!link)return
+    if(link.kind==='external'&&!isSafeNavigableImportedLink(link))return
+    links.push({ref:cellReference(columnIndex,rowIndex+2),link,...(link.kind==='external'?{relationshipId:`rId${relationshipIndex++}`}:{})})
+  }))
+  return links
+}
+function hyperlinkAttributes(item:SheetHyperlink){
+  const display=item.link.display?` display="${xml(item.link.display)}"`:''
+  const tooltip=item.link.tooltip?` tooltip="${xml(item.link.tooltip)}"`:''
+  return item.link.kind==='internal'?`<hyperlink ref="${item.ref}" location="${xml(item.link.target)}"${display}${tooltip}/>`:`<hyperlink ref="${item.ref}" r:id="${item.relationshipId}"${display}${tooltip}/>`
+}
+function sheetPackage(table:ExportTable,catalog:StyleCatalog){
+  const hyperlinks=exportableHyperlinks(table.sourceTable)
+  const sheetData=`<sheetData>${table.rows.map((row,rowIndex)=>`<row r="${rowIndex+1}">${row.map((value,columnIndex)=>{if(value===null||value===undefined)return'';const ref=cellReference(columnIndex,rowIndex+1),styleIndex=table.sourceTable?styleIndexFor(table.sourceTable,rowIndex,columnIndex,catalog):0,style=styleIndex?` s="${styleIndex}"`:'';if(typeof value==='boolean')return`<c r="${ref}"${style} t="b"><v>${value?1:0}</v></c>`;return typeof value==='number'&&Number.isFinite(value)?`<c r="${ref}"${style}><v>${value}</v></c>`:`<c r="${ref}"${style} t="inlineStr"><is><t xml:space="preserve">${xml(value)}</t></is></c>`}).join('')}</row>`).join('')}</sheetData>`
+  const hyperlinkXml=hyperlinks.length?`<hyperlinks>${hyperlinks.map(hyperlinkAttributes).join('')}</hyperlinks>`:''
+  const sheetXml=`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">${sheetData}${hyperlinkXml}</worksheet>`
+  const external=hyperlinks.filter((item)=>item.link.kind==='external')
+  const rels=external.length?`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${external.map((item)=>`<Relationship Id="${item.relationshipId}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink" Target="${xml(item.link.target)}" TargetMode="External"/>`).join('')}</Relationships>`:undefined
+  return{sheetXml,rels}
+}
 
 export function safeExcelSheetNames(labels:string[]){
   const names:string[]=[],used=new Set<string>()
@@ -86,6 +110,6 @@ export function exportWorkspaceXlsxSafe(workspace:WorkspaceState):OfficeExportFi
   const workbookRels=`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${tables.map((_,index)=>`<Relationship Id="rId${index+1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet${index+1}.xml"/>`).join('')}${styleRelationship}</Relationships>`
   const files:Record<string,string>={'[Content_Types].xml':contentTypes,'_rels/.rels':rootRels,'xl/workbook.xml':workbook,'xl/_rels/workbook.xml.rels':workbookRels}
   if(hasStyles)files['xl/styles.xml']=stylesXml(catalog)
-  tables.forEach((table,index)=>{files[`xl/worksheets/sheet${index+1}.xml`]=sheetXml(table,catalog)})
+  tables.forEach((table,index)=>{const sheet=sheetPackage(table,catalog),number=index+1;files[`xl/worksheets/sheet${number}.xml`]=sheet.sheetXml;if(sheet.rels)files[`xl/worksheets/_rels/sheet${number}.xml.rels`]=sheet.rels})
   return{filename:`frame-${slug(workspace.title)}.xlsx`,mimeType:XLSX_MIME,bytes:createStoredZip(files)}
 }
