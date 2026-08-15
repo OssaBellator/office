@@ -136,7 +136,7 @@ test('promoted Word review remaps by source comment id and detaches safely if so
   const detached=apply(workspace,removedSource.commands)
   const detachedInbox=listWorkspaceReviewInbox(detached).find((item)=>item.id===promotion.review.id)
   assert.ok(detachedInbox)
-  assert.equal(detachedInbox.origin,'frame-data')
+  assert.equal(detachedInbox.origin,'frame-workspace')
   assert.equal(detachedInbox.detached,true)
   assert.equal(detachedInbox.relinkable,false)
 })
