@@ -28,7 +28,15 @@ Source review is searchable, version-diffed, fingerprinted, persisted and visibl
 
 ### 2. Promoted native Frame review
 
-A user can explicitly promote a source note or thread into native Frame review work. Promotion currently creates a Frame task by default and retains an immutable source pointer containing:
+A user can explicitly promote a source note or thread into native Frame review work. The promotion editor keeps the immutable source review visible while the user chooses:
+
+- **Task**, **Comment**, or **Approval**;
+- owner; and
+- native Frame follow-up text, which may intentionally differ from the source wording.
+
+Tasks and comments may remain unassigned. Approvals require an explicit owner and begin in `pending` state.
+
+Promotion retains an immutable source pointer containing:
 
 - source file;
 - source table;
@@ -44,10 +52,10 @@ Native promoted review participates in:
 - undo/redo and revert;
 - workspace fingerprints;
 - readiness diagnostics;
-- task/approval resolution; and
+- task/comment/approval resolution; and
 - Office export preflight.
 
-Promoted approvals can block readiness. Promoted tasks/comments are follow-up work but are not converted into source comments.
+Promoted approvals can block readiness. Promoted tasks/comments are follow-up work but are never written back into the imported source conversation.
 
 ## Source identity and re-import
 
