@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import { withImportedTables } from '../src/importedTables.ts'
 import { cloneSeedWorkspace } from '../src/model.ts'
 import { createVersionedWorkspaceSession, executeVersionedWorkspaceCommand } from '../src/versioning.ts'
 import { semanticWorkspaceFingerprint } from '../src/workspaceFingerprint.ts'
@@ -28,4 +29,11 @@ test('semantic workspace fingerprint includes authored document and presentation
   const before = semanticWorkspaceFingerprint(session.present)
   session = executeVersionedWorkspaceCommand(session, { type:'presentation.note.update', sceneId:'performance', note:'Authored note' })
   assert.notEqual(semanticWorkspaceFingerprint(session.present), before)
+})
+
+test('semantic workspace fingerprint changes for imported review-note provenance', () => {
+  const table={id:'table:pipeline',label:'Pipeline',source:'pipeline.xlsx',importedAt:'now',columns:[{id:'arr',label:'ARR',type:'number'}],rows:[{id:'row:1',values:{arr:2.4}}]}
+  const left=withImportedTables(cloneSeedWorkspace(),[{...table,commentByCell:{'row:1\u0000arr':{text:'Validate renewal',author:'Alice'}}}])
+  const right=withImportedTables(cloneSeedWorkspace(),[{...table,commentByCell:{'row:1\u0000arr':{text:'Validated with Finance',author:'Alice'}}}])
+  assert.notEqual(semanticWorkspaceFingerprint(left),semanticWorkspaceFingerprint(right))
 })
