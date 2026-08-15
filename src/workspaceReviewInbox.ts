@@ -3,7 +3,7 @@ import { getImportedTables } from './importedTables.ts'
 import { getImportedThreadedReviewItems } from './importedThreadedReview.ts'
 import type { WorkspaceState } from './model.ts'
 import { listReviewInbox, type ReviewInboxItem } from './reviewWorkflow.ts'
-import type { WorkspaceReviewKind, WorkspaceReviewStatus } from './workspaceReviews.ts'
+import { getWorkspaceReviews, type WorkspaceReviewKind, type WorkspaceReviewStatus } from './workspaceReviews.ts'
 
 export type NativeWorkspaceReviewItem={
   origin:'frame'
@@ -73,12 +73,14 @@ export function listWorkspaceReviewInbox(workspace:WorkspaceState):WorkspaceRevi
   const documentNative=listReviewInbox(workspace)
     .filter((item)=>item.status==='open'||item.status==='pending')
     .map(nativeItem)
-  const tables=getImportedTables(workspace)
-  const promoted=tables.flatMap((table)=>(table.promotedReviews??[]).map((review)=>({table,review})))
-  const promotedBySource=new Map(promoted.flatMap(({review})=>review.sourceReview?[[`${review.sourceReview.source}|${review.sourceReview.sourceReviewId}`,review.id] as const]:[]))
+  const tables=getImportedTables(workspace),tableById=new Map(tables.map((table)=>[table.id,table] as const)),promoted=getWorkspaceReviews(workspace)
+  const promotedBySource=new Map(promoted.flatMap((review)=>review.sourceReview?[[`${review.sourceReview.source}|${review.sourceReview.sourceReviewId}`,review.id] as const]:[]))
   const promotedNative=promoted
-    .filter(({review})=>review.kind==='approval'?review.status!=='approved':review.status!=='resolved')
-    .map(({table,review}):PromotedWorkspaceReviewItem=>({origin:'frame-data',id:review.id,objectId:review.objectId,label:review.label,kind:review.kind,body:review.body,owner:review.owner,status:review.status,source:review.sourceReview?.source??'Frame',archived:archiveLabel(table.label),actionable:true}))
+    .filter((review)=>review.kind==='approval'?review.status!=='approved':review.status!=='resolved')
+    .map((review):PromotedWorkspaceReviewItem=>{
+      const table=review.sourceReview?tableById.get(review.sourceReview.tableId):undefined
+      return{origin:'frame-data',id:review.id,objectId:review.objectId,label:review.label,kind:review.kind,body:review.body,owner:review.owner,status:review.status,source:review.sourceReview?.source??'Frame',archived:Boolean(table&&archiveLabel(table.label)),actionable:true}
+    })
   const threads=getImportedThreadedReviewItems(workspace)
     .filter((item)=>!archiveLabel(item.tableLabel))
     .map((item):ImportedThreadWorkspaceReviewItem=>({
