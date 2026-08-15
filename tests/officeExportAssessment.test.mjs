@@ -6,7 +6,7 @@ import { assessOfficeExport } from '../src/officeExportAssessment.ts'
 
 test('Office export assessment counts preserved spreadsheet fidelity',()=>{
   let workspace=cloneSeedWorkspace()
-  workspace=withImportedTables(workspace,[{id:'table:flags',label:'Flags',source:'model.xlsx',importedAt:'now',sourceVisibility:'hidden',sourceDateSystem:'1900',columns:[{id:'enabled',label:'Enabled',type:'boolean'},{id:'ratio',label:'Ratio',type:'number'}],rows:[{id:'row:1',values:{enabled:true,ratio:.42}}],formulaByCell:{'row:1\u0000ratio':'21/50'},numberFormatByCell:{'row:1\u0000ratio':{numFmtId:10}},linkByCell:{'row:1\u0000ratio':{kind:'external',target:'https://example.com/model'}}}])
+  workspace=withImportedTables(workspace,[{id:'table:flags',label:'Flags',source:'model.xlsx',importedAt:'now',sourceVisibility:'hidden',sourceDateSystem:'1900',columns:[{id:'enabled',label:'Enabled',type:'boolean'},{id:'ratio',label:'Ratio',type:'number'}],rows:[{id:'row:1',values:{enabled:true,ratio:.42}}],formulaByCell:{'row:1\u0000ratio':'21/50'},numberFormatByCell:{'row:1\u0000ratio':{numFmtId:10}},linkByCell:{'row:1\u0000ratio':{kind:'external',target:'https://example.com/model'}},commentByCell:{'row:1\u0000ratio':{text:'Validate margin assumption',author:'Alice'}}}])
   const assessment=assessOfficeExport(workspace)
   assert.equal(assessment.xlsx.tables,3)
   assert.equal(assessment.xlsx.formulaCells,1)
@@ -14,10 +14,12 @@ test('Office export assessment counts preserved spreadsheet fidelity',()=>{
   assert.equal(assessment.xlsx.hyperlinkCells,1)
   assert.equal(assessment.xlsx.exportableHyperlinkCells,1)
   assert.equal(assessment.xlsx.suppressedHyperlinkCells,0)
+  assert.equal(assessment.xlsx.reviewNoteCells,1)
   assert.equal(assessment.xlsx.booleanCells,1)
   assert.equal(assessment.xlsx.hiddenTables,1)
   assert.equal(assessment.warnings.some((warning)=>/cached values only/.test(warning)),true)
   assert.equal(assessment.warnings.some((warning)=>/projected back into XLSX/.test(warning)),true)
+  assert.equal(assessment.warnings.some((warning)=>/Frame review provenance/.test(warning)),true)
 })
 
 test('Office export assessment distinguishes inert external hyperlinks from exportable links',()=>{
