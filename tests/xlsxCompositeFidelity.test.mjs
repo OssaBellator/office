@@ -6,7 +6,7 @@ import { planSecureOfficeImport } from '../src/officeSecureImport.ts'
 import { createVersionedWorkspaceSession, executeVersionedWorkspaceCommand } from '../src/versioning.ts'
 import { getImportedTableComment, getImportedTableFormula, getImportedTableLink, getImportedTableNumberFormat, getImportedTables } from '../src/importedTables.ts'
 import { readOfficeXml, readOfficeZip } from '../src/officeArchive.ts'
-import { parseXlsxHyperlinks, } from '../src/xlsxHyperlinkImport.ts'
+import { parseXlsxHyperlinks } from '../src/xlsxHyperlinkImport.ts'
 import { parseXlsxNumberFormatStyles } from '../src/xlsxNumberFormatImport.ts'
 
 function workbook(){
@@ -38,7 +38,7 @@ test('composite Excel fidelity survives secure import enrichment ordering',async
   assert.equal(getImportedTableFormula(table,table.rows[1].id,'calculated'),'C3+1')
   assert.equal(getImportedTableLink(table,table.rows[0].id,'website').target,'https://example.com/acme')
   assert.equal(getImportedTableLink(table,table.rows[0].id,'legacy').target,'file:///C:/legacy.xlsx')
-  assert.deepEqual(getImportedTableComment(table,table.rows[0].id,'date-serial'),{text:'Confirm migration date',author:'Finance'})
+  assert.deepEqual(getImportedTableComment(table,table.rows[0].id,'date-serial'),{text:'Confirm migration date',sourceRef:'C2',author:'Finance'})
   assert.equal(plan.warnings.some((warning)=>/very hidden/.test(warning)),true)
   assert.equal(plan.warnings.some((warning)=>/shared-formula dependent cell/.test(warning)),true)
   assert.equal(plan.warnings.some((warning)=>/non-web\/non-mail scheme/.test(warning)),true)
