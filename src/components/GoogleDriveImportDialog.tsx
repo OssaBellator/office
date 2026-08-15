@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import { AlertTriangle, FileSpreadsheet, FileText, Loader2, Presentation, RefreshCw, Search, X } from 'lucide-react'
 import { createGoogleDriveClient, type GoogleDriveClient, type GoogleDriveWorkspaceFile } from '../googleDriveProvider'
 import { getConfiguredGoogleClientId, requestGoogleDriveReadonlyToken } from '../googleIdentity'
-import { planGoogleWorkspaceImport } from '../googleWorkspaceImport'
+import { planGoogleWorkspaceInteropImport } from '../googleWorkspaceInteropImport'
 import type { WorkspaceState } from '../model'
 import type { OfficeImportPlan } from '../officeImportPlanner'
 import '../google-drive-import.css'
@@ -45,13 +45,13 @@ export function GoogleDriveImportDialog({workspace,onClose,onPlan}:{workspace:Wo
   const importFile=async(file:GoogleDriveWorkspaceFile)=>{
     if(!client)return
     setBusy(`import:${file.id}`);setError(null)
-    try{const plan=await planGoogleWorkspaceImport(workspace,file,client);onPlan(plan,file)}
+    try{const plan=await planGoogleWorkspaceInteropImport(workspace,file,client);onPlan(plan,file)}
     catch(reason){setError(reason instanceof Error?reason.message:`Could not import ${file.name}`);setBusy(null)}
   }
 
   return <div className="google-drive-backdrop" onMouseDown={onClose}>
     <section className="google-drive-dialog" onMouseDown={(event)=>event.stopPropagation()} aria-label="Import from Google Drive">
-      <header><div><span>GOOGLE DRIVE · READ ONLY</span><h2>Import Google Docs, Sheets or Slides</h2><p>Frame asks Google for read-only Drive access, exports the selected native file to DOCX/XLSX/PPTX in memory, then runs the normal semantic import preview. The access token is not saved to the workspace.</p></div><button className="icon-button" onClick={onClose} aria-label="Close Google Drive import"><X size={16}/></button></header>
+      <header><div><span>GOOGLE DRIVE · READ ONLY</span><h2>Import Google Docs, Sheets or Slides</h2><p>Frame asks Google for read-only Drive access, exports the selected native file to DOCX/XLSX/PPTX in memory, runs the secure Office package checks, then shows the normal semantic import preview. The access token is not saved to the workspace.</p></div><button className="icon-button" onClick={onClose} aria-label="Close Google Drive import"><X size={16}/></button></header>
 
       {!clientId&&<div className="google-drive-config-warning"><AlertTriangle size={16}/><div><strong>Direct Google import is not configured</strong><span>Set <code>VITE_GOOGLE_CLIENT_ID</code> to a public Google OAuth web client ID for this deployment. No client secret belongs in the browser. You can still download DOCX/PPTX/XLSX from Google and use the normal Office import.</span></div></div>}
 
