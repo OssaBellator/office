@@ -26,15 +26,19 @@ test('classic note provenance retains source-cell identity through parser and ru
 test('semantic history uses the review-aware workspace comparator',async()=>{
   const browser=await source('src/components/HistoryBrowser.tsx')
   const revert=await source('src/revert.ts')
+  const compare=await source('src/workspaceReviewCompare.ts')
   assert.match(browser,/compareWorkspaceStatesWithReview/)
   assert.doesNotMatch(browser,/compareWorkspaceStates\(selected\.transaction\.before/)
   assert.match(revert,/compareWorkspaceStatesWithReview/)
+  assert.match(compare,/getWorkspaceReviews/)
+  assert.match(compare,/Frame review status/)
 })
 
-test('imported Data cells render classic-note threaded-review and native promoted provenance',async()=>{
+test('imported Data cells render source review and canonical native workspace review provenance',async()=>{
   const text=await source('src/components/ImportedTablesPanel.tsx')
   assert.match(text,/getImportedTableComment/)
   assert.match(text,/getImportedTableThread/)
+  assert.match(text,/getWorkspaceReviews/)
   assert.match(text,/imported-note-badge/)
   assert.match(text,/imported-thread-badge/)
   assert.match(text,/imported-frame-review-badge/)
@@ -56,15 +60,19 @@ test('Office export preflight exposes source review and promoted native Data rev
   assert.match(page,/assessment\.xlsx\.promotedReviewItems/)
 })
 
-test('runtime imported-table codec owns note threaded-review and promoted-review validation',async()=>{
+test('canonical native review storage is workspace-level while table-owned promoted reviews remain migration-only',async()=>{
+  const workspaceReviews=await source('src/workspaceReviews.ts')
   const commandCodec=await source('src/commandCodec.ts')
   const tableCodec=await source('src/importedTableCodec.ts')
-  assert.match(commandCodec,/parseImportedDataTable/)
-  assert.match(tableCodec,/commentByCell/)
-  assert.match(tableCodec,/threadByCell/)
+  const semanticCommands=await source('src/semanticCommands.ts')
+  assert.match(workspaceReviews,/workspaceReviews/)
+  assert.match(workspaceReviews,/materializeWorkspaceReviews/)
+  assert.match(workspaceReviews,/legacyTableReviews/)
+  assert.match(commandCodec,/review\.workspace\.replace/)
+  assert.match(commandCodec,/parseWorkspaceReviewRecord/)
+  assert.match(semanticCommands,/case 'review\.workspace\.replace'/)
   assert.match(tableCodec,/promotedReviews/)
-  assert.match(tableCodec,/parseImportedCellComment/)
-  assert.match(tableCodec,/parseReviewThread/)
+  assert.match(tableCodec,/parseWorkspaceReviewRecord/)
 })
 
 test('unified Context review inbox opens a configurable promotion editor for source provenance',async()=>{
@@ -84,9 +92,11 @@ test('unified Context review inbox opens a configurable promotion editor for sou
   assert.match(editor,/Promoted review body/)
   assert.match(promotion,/body\?:string/)
   assert.match(promotion,/explicit owner/)
-  assert.match(promotion,/sourceReviewId/)
+  assert.match(promotion,/review\.workspace\.replace/)
+  assert.match(sync,/getWorkspaceReviews/)
   assert.match(sync,/findSourceReviewCell/)
-  assert.match(sync,/sameContent/)
+  assert.match(sync,/setReviewCommand/)
+  assert.match(sync,/withoutLegacyReviews/)
 })
 
 test('archived native review can be explicitly relinked to ranked refreshed source review',async()=>{
