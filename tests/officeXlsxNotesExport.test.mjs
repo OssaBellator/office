@@ -37,5 +37,5 @@ test('experimental note XLSX round-trips classic note provenance through secure 
   const table=replacement.tables.find((item)=>item.label==='Pipeline')
   assert.ok(table)
   const comment=Object.values(table.commentByCell??{})[0]
-  assert.deepEqual(comment,{text:'Validate renewal assumption',author:'Alice'})
+  assert.deepEqual(comment,{text:'Validate renewal assumption',sourceRef:'B2',author:'Alice'})
 })
