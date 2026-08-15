@@ -4,8 +4,10 @@ import { withImportedTables } from '../src/importedTables.ts'
 import { cloneSeedWorkspace } from '../src/model.ts'
 import { getSemanticDocument, withSemanticDocument } from '../src/semanticDocument.ts'
 import { listWorkspaceReviewInbox, summarizeWorkspaceReviewInbox } from '../src/workspaceReviewInbox.ts'
+import { withWorkspaceReviews } from '../src/workspaceReviews.ts'
 
 const sourceThread={comments:[{id:'thread:1',personId:'person:alice',author:'Alice',text:'Review renewal',done:false},{id:'thread:2',personId:'person:bob',author:'Bob',text:'Validated',parentId:'thread:1'}]}
+const wordSourceReview={id:'source-review:word-comment:strategy.docx:7',objectId:'block:business-snapshot',label:'Word comment · Business snapshot',kind:'comment',body:'Confirm wording with Legal',owner:'Editor',status:'open',createdAt:'source',sourceOnly:true,sourceReview:{kind:'word-comment',source:'strategy.docx',blockId:'block:business-snapshot',sourceReviewId:'word-comment:strategy.docx:7'}}
 
 test('workspace review inbox keeps native reviews actionable and imported Excel review read-only',()=>{
   let workspace=cloneSeedWorkspace()
@@ -33,12 +35,27 @@ test('workspace review inbox keeps native reviews actionable and imported Excel 
   assert.deepEqual(thread.participants,['Alice','Bob'])
 })
 
+test('Word source comments are visible source provenance rather than native open work',()=>{
+  const workspace=withWorkspaceReviews(cloneSeedWorkspace(),[wordSourceReview])
+  const inbox=listWorkspaceReviewInbox(workspace),word=inbox.find((item)=>item.origin==='imported-word')
+  assert.ok(word)
+  assert.equal(word.kind,'source-comment')
+  assert.equal(word.actionable,false)
+  assert.equal(word.owner,'Editor')
+  assert.equal(word.source,'strategy.docx')
+  const summary=summarizeWorkspaceReviewInbox(workspace)
+  assert.equal(summary.importedWordComments,1)
+  assert.equal(summary.nativeOpen,0)
+  assert.equal(summary.total,1)
+})
+
 test('workspace review summary separates native open work, source notes and source threads',()=>{
   const workspace=withImportedTables(cloneSeedWorkspace(),[
     {id:'table:a',label:'Pipeline',source:'pipeline.xlsx',importedAt:'now',columns:[{id:'arr',label:'ARR',type:'number'}],rows:[{id:'row:1',values:{arr:2.4}}],commentByCell:{'row:1\u0000arr':{text:'Validate renewal',author:'Alice'}},threadByCell:{'row:1\u0000arr':sourceThread}},
     {id:'table:b',label:'Controls',source:'controls.xlsx',importedAt:'now',columns:[{id:'enabled',label:'Enabled',type:'boolean'}],rows:[{id:'row:2',values:{enabled:true}}],commentByCell:{'row:2\u0000enabled':{text:'Check control'}}},
   ])
   const summary=summarizeWorkspaceReviewInbox(workspace)
+  assert.equal(summary.importedWordComments,0)
   assert.equal(summary.importedSourceNotes,2)
   assert.equal(summary.importedThreads,1)
   assert.equal(summary.importedOpenThreads,1)
@@ -62,6 +79,7 @@ test('review archives expose native work without duplicating copied source prove
   assert.equal(inbox.some((item)=>item.origin==='imported-excel-thread'),false)
   const summary=summarizeWorkspaceReviewInbox(workspace)
   assert.equal(summary.archivedNativeOpen,1)
+  assert.equal(summary.importedWordComments,0)
   assert.equal(summary.importedSourceNotes,1)
   assert.equal(summary.importedThreads,0)
 })
