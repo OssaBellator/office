@@ -48,6 +48,7 @@ test('promoting a source note creates a native Frame task without mutating sourc
 test('promotion can author native kind owner and follow-up without changing the source review',()=>{
   const workspace=withImportedTables(cloneSeedWorkspace(),[sourceTable()])
   const source=listWorkspaceReviewInbox(workspace).find((item)=>item.origin==='imported-excel-thread')
+  assert.throws(()=>planPromoteSourceReview(workspace,source.id,{kind:'approval'}),/explicit owner/)
   const promotion=planPromoteSourceReview(workspace,source.id,{kind:'approval',owner:'Finance lead',body:'Approve renewal evidence before forecast lock',createdAt:'now'})
   assert.equal(promotion.review.kind,'approval')
   assert.equal(promotion.review.status,'pending')
