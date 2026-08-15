@@ -1,0 +1,96 @@
+import assert from 'node:assert/strict'
+import test from 'node:test'
+import { deserializeWorkspaceCommand, serializeWorkspaceCommand } from '../src/commandCodec.ts'
+import { parseDocxCommentParagraphAnchors, parseDocxComments } from '../src/docxCommentImport.ts'
+import { cloneSeedWorkspace } from '../src/model.ts'
+import { createStoredZip } from '../src/officeExport.ts'
+import { planSecureOfficeImport } from '../src/officeSecureImport.ts'
+import { searchWorkspace } from '../src/searchIndex.ts'
+import { createVersionedWorkspaceSession, executeVersionedWorkspaceCommand } from '../src/versioning.ts'
+import { assessWorkspaceReadiness, buildWorkspaceDiagnostics } from '../src/workspaceDiagnostics.ts'
+import { listWorkspaceReviewInbox } from '../src/workspaceReviewInbox.ts'
+import { getWorkspaceReviews } from '../src/workspaceReviews.ts'
+
+function documentXml(secondCommentText='Next step'){
+  return`<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body><w:p><w:r><w:t>Opening context</w:t></w:r></w:p><w:p><w:commentRangeStart w:id="7"/><w:r><w:t>Revenue grew 17%.</w:t></w:r><w:commentRangeEnd w:id="7"/><w:r><w:commentReference w:id="7"/></w:r></w:p><w:p><w:r><w:t>${secondCommentText}</w:t></w:r><w:r><w:commentReference w:id="8"/></w:r></w:p></w:body></w:document>`
+}
+function commentsXml(second='Clarify the next owner'){
+  return`<w:comments xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:comment w:id="7" w:author="Alice Chen" w:initials="AC" w:date="2026-08-15T03:00:00Z"><w:p><w:r><w:t>Confirm revenue with Finance.</w:t></w:r></w:p><w:p><w:r><w:t>Use the board-approved figure.</w:t></w:r></w:p></w:comment><w:comment w:id="8" w:author="Bob Singh"><w:p><w:r><w:t>${second}</w:t></w:r></w:p></w:comment></w:comments>`
+}
+function docx({secondComment='Clarify the next owner',extended=true}={}){
+  const files={
+    '[Content_Types].xml':'<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/><Override PartName="/word/comments.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.comments+xml"/></Types>',
+    '_rels/.rels':'<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>',
+    'word/document.xml':documentXml(),
+    'word/_rels/document.xml.rels':'<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rIdComments" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/comments" Target="comments.xml"/></Relationships>',
+    'word/comments.xml':commentsXml(secondComment),
+  }
+  if(extended)files['word/commentsExtended.xml']='<w15:commentsEx xmlns:w15="http://schemas.microsoft.com/office/word/2012/wordml"/>'
+  return createStoredZip(files)
+}
+function apply(workspace,commands){let session=createVersionedWorkspaceSession(workspace);for(const command of commands)session=executeVersionedWorkspaceCommand(session,command);return session.present}
+
+test('Word comment parser preserves author date multiline body and paragraph anchors',()=>{
+  const comments=parseDocxComments(commentsXml())
+  assert.equal(comments.length,2)
+  assert.deepEqual(comments[0],{id:'7',author:'Alice Chen',initials:'AC',createdAt:'2026-08-15T03:00:00Z',text:'Confirm revenue with Finance.\nUse the board-approved figure.'})
+  const anchors=parseDocxCommentParagraphAnchors(documentXml())
+  assert.equal(anchors.get('7'),1)
+  assert.equal(anchors.get('8'),2)
+})
+
+test('secure DOCX import preserves comments as source-only review on imported semantic blocks',async()=>{
+  const plan=await planSecureOfficeImport(cloneSeedWorkspace(),docx(),'strategy.docx')
+  const inserts=plan.commands.filter((command)=>command.type==='document.block.insert')
+  const reviewCommand=plan.commands.find((command)=>command.type==='review.workspace.replace')
+  assert.equal(inserts.length,3)
+  assert.ok(reviewCommand)
+  const sourceReviews=reviewCommand.reviews.filter((review)=>review.sourceOnly)
+  assert.equal(sourceReviews.length,2)
+  assert.equal(sourceReviews[0].objectId,inserts[1].block.id)
+  assert.equal(sourceReviews[0].sourceReview.kind,'word-comment')
+  assert.equal(sourceReviews[0].sourceReview.blockId,inserts[1].block.id)
+  assert.equal(sourceReviews[0].sourceReview.sourceReviewId,'word-comment:strategy.docx:7')
+  assert.equal(sourceReviews[0].owner,'Alice Chen')
+  assert.match(sourceReviews[0].body,/board-approved figure/)
+  assert.deepEqual(deserializeWorkspaceCommand(serializeWorkspaceCommand(reviewCommand)),reviewCommand)
+  assert.equal(plan.warnings.some((warning)=>/preserved as read-only source review provenance/.test(warning)),true)
+  assert.equal(plan.warnings.some((warning)=>/Additional modern Word comment-thread metadata/.test(warning)),true)
+  assert.equal(plan.warnings.some((warning)=>/Word comments and comment threads are not imported yet/.test(warning)),false)
+})
+
+test('Word source comments are searchable and visible but do not become native readiness work',async()=>{
+  const base=cloneSeedWorkspace(),baseline=assessWorkspaceReadiness(base)
+  const plan=await planSecureOfficeImport(base,docx({extended:false}),'strategy.docx')
+  const workspace=apply(base,plan.commands)
+  const reviews=getWorkspaceReviews(workspace).filter((review)=>review.sourceOnly&&review.sourceReview?.kind==='word-comment')
+  assert.equal(reviews.length,2)
+  assert.equal(searchWorkspace(workspace,'Alice Finance',{kinds:['review'],surface:'docs'})[0].id,reviews[0].id)
+  const inbox=listWorkspaceReviewInbox(workspace).filter((item)=>item.origin==='imported-word')
+  assert.equal(inbox.length,2)
+  assert.equal(inbox[0].actionable,false)
+  const readiness=assessWorkspaceReadiness(workspace)
+  assert.equal(readiness.openTasks,baseline.openTasks)
+  assert.equal(readiness.openApprovals,baseline.openApprovals)
+  assert.equal(buildWorkspaceDiagnostics(workspace).some((item)=>item.id.startsWith('workspace-review-comment:source-review:word-comment:')),false)
+})
+
+test('DOCX re-import replaces prior source comments with newly anchored records instead of duplicating them',async()=>{
+  const base=cloneSeedWorkspace()
+  const first=await planSecureOfficeImport(base,docx({extended:false}),'strategy.docx')
+  const imported=apply(base,first.commands)
+  const oldReviews=getWorkspaceReviews(imported).filter((review)=>review.sourceOnly&&review.sourceReview?.kind==='word-comment')
+  assert.equal(oldReviews.length,2)
+
+  const second=await planSecureOfficeImport(imported,docx({secondComment:'Assign the next owner',extended:false}),'strategy.docx')
+  const replacement=second.commands.find((command)=>command.type==='review.workspace.replace')
+  assert.ok(replacement)
+  const nextSourceReviews=replacement.reviews.filter((review)=>review.sourceOnly&&review.sourceReview?.kind==='word-comment')
+  assert.equal(nextSourceReviews.length,2)
+  assert.deepEqual(nextSourceReviews.map((review)=>review.id).sort(),oldReviews.map((review)=>review.id).sort())
+  assert.equal(nextSourceReviews.some((review)=>review.body==='Assign the next owner'),true)
+  assert.equal(nextSourceReviews.every((review)=>!oldReviews.some((old)=>old.objectId===review.objectId)),true)
+
+  const refreshed=apply(imported,second.commands)
+  assert.equal(getWorkspaceReviews(refreshed).filter((review)=>review.sourceOnly&&review.sourceReview?.kind==='word-comment').length,2)
+})
