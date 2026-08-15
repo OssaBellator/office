@@ -5,11 +5,13 @@ import type { WorkspaceState } from '../model'
 import type { VersionedWorkspaceCommand } from '../semanticCommands'
 import { getWorkspaceReviews, type WorkspaceReviewRecord } from '../workspaceReviews'
 
+function isExcelReview(review:WorkspaceReviewRecord){return Boolean(review.sourceReview&&review.sourceReview.kind!=='word-comment')}
+
 export function ImportedTablesPanel({ workspace, focusedObjectId, onSemanticCommand }: { workspace:WorkspaceState; focusedObjectId?:string|null; onSemanticCommand:(command:VersionedWorkspaceCommand)=>void }) {
-  const tables=getImportedTables(workspace),reviews=getWorkspaceReviews(workspace)
+  const tables=getImportedTables(workspace),reviews=getWorkspaceReviews(workspace).filter(isExcelReview)
   if(!tables.length)return null
   const remove=(id:string)=>{
-    if(reviews.some((review)=>review.sourceReview?.tableId===id))return
+    if(reviews.some((review)=>review.sourceReview&&review.sourceReview.kind!=='word-comment'&&review.sourceReview.tableId===id))return
     onSemanticCommand({type:'data.imported.replace',tables:tables.filter((table)=>table.id!==id)})
   }
   const updateCell=(tableId:string,rowId:string,columnId:string,value:ImportedTableCell)=>{
@@ -25,7 +27,7 @@ export function ImportedTablesPanel({ workspace, focusedObjectId, onSemanticComm
   return <section className="imported-tables-panel">
     <div className="imported-tables-heading"><div><span>IMPORTED WORKBOOK TABLES</span><h2>Foreign schemas kept intact</h2><p>Sheets that do not match the live finance model remain structured and editable instead of being discarded. Boolean cells, source sheet visibility, Excel number-format provenance, hyperlinks, classic notes, threaded review conversations, linked native Frame review, and original formulas are retained. Editing a value replaces its imported formula but keeps display-format, link, and review provenance.</p></div><small>{tables.length} table{tables.length===1?'':'s'}</small></div>
     <div className="imported-table-stack">{tables.map((table)=>{
-      const linkedReviews=reviews.filter((review)=>review.sourceReview?.tableId===table.id)
+      const linkedReviews=reviews.filter((review)=>review.sourceReview&&review.sourceReview.kind!=='word-comment'&&review.sourceReview.tableId===table.id)
       return <article className={focusedObjectId===`table:${table.id}`?'imported-table-card frame-object-focused':'imported-table-card'} data-frame-object={`table:${table.id}`} key={table.id}>
         <header><div><Database size={14}/><div><strong>{table.label}</strong><span>{importedTableSummary(table)}{linkedReviews.length?` · ${linkedReviews.length} linked Frame review${linkedReviews.length===1?'':'s'}`:''} · {table.source}</span></div></div><button disabled={linkedReviews.length>0} onClick={()=>remove(table.id)} title={linkedReviews.length?`${table.label} is still referenced by ${linkedReviews.length} native Frame review record${linkedReviews.length===1?'':'s'}. Relink or explicitly detach that review before removing the source table.`:`Remove ${table.label}`}><Trash2 size={13}/></button></header>
         <div className="imported-table-scroll"><table><thead><tr>{table.columns.map((column)=><th key={column.id}>{column.label}<small>{column.type}</small></th>)}</tr></thead><tbody>{table.rows.slice(0,100).map((row)=><tr key={row.id}>{table.columns.map((column)=><td key={column.id}><ImportedCell table={table} rowId={row.id} columnId={column.id} value={row.values[column.id]??null} reviews={linkedReviews} onCommit={updateCell}/></td>)}</tr>)}</tbody></table></div>
@@ -43,7 +45,7 @@ function ImportedCell({table,rowId,columnId,value,reviews,onCommit}:{table:Impor
   const link=getImportedTableLink(table,rowId,columnId)
   const comment=getImportedTableComment(table,rowId,columnId)
   const thread=getImportedTableThread(table,rowId,columnId)
-  const promoted=reviews.filter((review)=>review.sourceReview?.rowId===rowId&&review.sourceReview.columnId===columnId)
+  const promoted=reviews.filter((review)=>review.sourceReview&&review.sourceReview.kind!=='word-comment'&&review.sourceReview.rowId===rowId&&review.sourceReview.columnId===columnId)
   const webLink=link?.kind==='external'&&isSafeNavigableImportedLink(link)?link:null
   const [draft,setDraft]=useState(cellDraft(value))
   const [invalid,setInvalid]=useState(false)
