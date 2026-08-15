@@ -2,10 +2,10 @@ import { getImportedTables, importedTableCellKey } from './importedTables.ts'
 import type { WorkspaceState } from './model.ts'
 import { compareWorkspaceStates, type WorkspaceVersionDiff } from './workspaceCompare.ts'
 
-function noteLabel(workspace:WorkspaceState,tableId:string,rowId:string,columnId:string){
+function noteMeta(workspace:WorkspaceState,tableId:string,rowId:string,columnId:string){
   const table=getImportedTables(workspace).find((item)=>item.id===tableId)
   const column=table?.columns.find((item)=>item.id===columnId)
-  return{objectId:`table:${tableId}:${rowId}`,label:`${column?.label??columnId} note`}
+  return{objectId:`table:${tableId}:${rowId}`,label:table?.label??tableId,field:`${column?.label??columnId} note`}
 }
 
 /** Adds imported Data review/note provenance to the core semantic workspace diff. */
@@ -22,8 +22,8 @@ export function compareWorkspaceStatesWithReview(before:WorkspaceState,after:Wor
       const key=importedTableCellKey(rowId,columnId),beforeNote=left.commentByCell?.[key],afterNote=right.commentByCell?.[key]
       const beforeValue=beforeNote?JSON.stringify(beforeNote):null,afterValue=afterNote?JSON.stringify(afterNote):null
       if(beforeValue===afterValue)continue
-      const meta=noteLabel(after,tableId,rowId,columnId)
-      diffs.push({objectId:meta.objectId,label:meta.objectId,field:meta.label,before:beforeValue,after:afterValue,change:beforeValue===null?'added':afterValue===null?'removed':'changed'})
+      const meta=noteMeta(after,tableId,rowId,columnId)
+      diffs.push({objectId:meta.objectId,label:meta.label,field:meta.field,before:beforeValue,after:afterValue,change:beforeValue===null?'added':afterValue===null?'removed':'changed'})
     }
   }
   return diffs
